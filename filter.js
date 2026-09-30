@@ -1,6 +1,6 @@
 'use strict';
 /*
- * Word filter managed from the admin panel. Rules persist in data/filters.json.
+ * Word filter managed from the admin panel. Rules are saved through store.js (database or data/filters.json).
  * Each rule: { id, word, match: 'word' | 'contains', action: 'mask' | 'block', hits, created }
  *  - match 'word'     → only whole words ("ass" won't hit "class")
  *  - match 'contains' → anywhere inside a word
@@ -8,22 +8,20 @@
  *  - action 'block'   → message is not delivered at all
  * All rules of one action are compiled into a single regex, so checking is one pass per message.
  */
-const fs = require('fs');
-const path = require('path');
-
 const escapeRe = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+');
 const norm = s => s.toLowerCase().replace(/\s+/g, ' ').trim();
 
 class WordFilter {
-  constructor(file) {
-    this.file = file;
-    this.rules = [];
-    try { this.rules = JSON.parse(fs.readFileSync(file, 'utf8')); } catch {}
+  constructor(store) {
+    this.store = store;
+    const saved = store.get('filters');
+    this.rules = Array.isArray(saved) ? saved : [];
     this.nextId = this.rules.reduce((m, r) => Math.max(m, r.id), 0) + 1;
     this.dirty = false;
     this.compile();
-    // hit counters change constantly; write them out at most every 30s
-    setInterval(() => { if (this.dirty) this.save(); }, 30000).unref();
+    // Hit counters change constantly; save them at most every 30 minutes (rule changes save immediately).
+    // Rare writes let a serverless database sleep between admin actions and stay within free limits.
+    setInterval(() => { if (this.dirty) this.save(); }, 30 * 60 * 1000).unref();
   }
 
   compile() {
@@ -43,9 +41,7 @@ class WordFilter {
 
   save() {
     this.dirty = false;
-    fs.mkdirSync(path.dirname(this.file), { recursive: true });
-    fs.writeFileSync(this.file + '.tmp', JSON.stringify(this.rules, null, 2));
-    fs.renameSync(this.file + '.tmp', this.file);
+    this.store.set('filters', this.rules);
   }
 
   hit(matchText) {

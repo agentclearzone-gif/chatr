@@ -111,7 +111,11 @@
     lastOverview = d;
     $('navUsers').textContent = fmt(d.online);
     $('navConvos').textContent = fmt(d.activeConvos);
-    $('uptime').textContent = `Server up ${dur(d.now - d.startedAt)} · ${fmt(d.memoryMB)} MB memory`;
+    const st = d.storage || {};
+    $('uptime').innerHTML = `Server up ${dur(d.now - d.startedAt)} · ${fmt(d.memoryMB)} MB memory · ` +
+      (st.kind === 'postgres'
+        ? (st.error ? `<span class="tag block" data-tip="${esc(st.error)}">Database error</span> ${esc(st.detail)}` : `<span class="tag" style="background:#e7f6ea;color:#1b7a2f">Saved in database</span> ${esc(st.detail)}`)
+        : `<span class="tag mask" data-tip="Settings are saved as files on this server. On hosts without a persistent disk (e.g. Render free) they reset on restart — set DATABASE_URL to use PostgreSQL.">Saved in files</span>`);
     const msgs = d.messages.room + d.messages.pm + d.messages.img;
     $('tiles').innerHTML = [
       tile('Online now', fmt(d.online), `Peak ${fmt(d.peak.n)} at ${dtFmt.format(d.peak.ts)}`, true),

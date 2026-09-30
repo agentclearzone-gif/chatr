@@ -96,6 +96,7 @@ module.exports = function createAdminApi(ctx) {
       countries,
       history: stats.history,
       memoryMB: Math.round(process.memoryUsage().rss / 1048576),
+      storage: ctx.storage(),
     };
   }
 

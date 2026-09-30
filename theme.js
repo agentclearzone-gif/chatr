@@ -1,11 +1,10 @@
 'use strict';
 /*
- * Site appearance, editable from the admin panel (Appearance page) and saved in data/theme.json.
+ * Site appearance, editable from the admin panel (Appearance page) and saved through store.js
+ * (database, or data/theme.json + data/uploads/ for images).
  * Colors become CSS variables; texts and images are rendered into the login page by the server,
  * so visitors never see a flash of the old theme.
  */
-const fs = require('fs');
-const path = require('path');
 const crypto = require('crypto');
 
 const PRESETS = {
@@ -26,21 +25,22 @@ const DEFAULTS = {
   description: 'Free anonymous chat. Your chats are deleted as soon as you or the other person leaves. Moderators may review live chats to keep everyone safe.',
   buttonText: 'Start chatting',
   showHero: true, showPattern: true,
-  heroImage: null,   // { ext, v } when an admin uploaded one
+  heroImage: null,   // { type, v } when an admin uploaded one (the bytes live in the store)
   logoImage: null,
 };
 const IMAGE_RE = /^data:image\/(png|jpeg|webp);base64,([A-Za-z0-9+/=]+)$/; // no SVG: it could carry scripts
 const MAX_IMAGE_BYTES = 4 * 1024 * 1024;
 
 class Theme {
-  constructor(dataDir) {
-    this.file = path.join(dataDir, 'theme.json');
-    this.uploads = path.join(dataDir, 'uploads');
-    let saved = {};
-    try { saved = JSON.parse(fs.readFileSync(this.file, 'utf8')); } catch {}
+  constructor(store) {
+    this.store = store;
+    const saved = store.get('theme') || {};
     this.values = { ...DEFAULTS };
     try { this.apply(saved); } catch {}
-    for (const k of ['heroImage', 'logoImage']) if (saved[k] && fs.existsSync(this.imagePath(k))) this.values[k] = saved[k];
+    for (const slot of ['hero', 'logo']) {
+      const blob = store.getBlob(slot);
+      if (blob) this.values[slot + 'Image'] = { type: blob.type, v: crypto.createHash('sha1').update(blob.data).digest('hex').slice(0, 10) };
+    }
   }
 
   all() { return { ...this.values }; }
@@ -72,13 +72,12 @@ class Theme {
   }
 
   save() {
-    fs.mkdirSync(path.dirname(this.file), { recursive: true });
-    fs.writeFileSync(this.file, JSON.stringify(this.values, null, 2));
+    this.store.set('theme', this.values);
   }
 
-  imagePath(key) {
-    const img = this.values[key];
-    return img ? path.join(this.uploads, `${key === 'heroImage' ? 'hero' : 'logo'}.${img.ext}`) : null;
+  /** Uploaded image for 'hero' | 'logo': { type, data } or undefined. */
+  image(slot) {
+    return this.values[slot + 'Image'] ? this.store.getBlob(slot) : undefined;
   }
 
   /** slot: 'hero' | 'logo'; dataUrl: data:image/png|jpeg|webp;base64,… */
@@ -88,23 +87,17 @@ class Theme {
     if (!m) throw new Error('Please upload a PNG, JPEG or WebP image');
     const buf = Buffer.from(m[2], 'base64');
     if (buf.length > MAX_IMAGE_BYTES) throw new Error('Image is too large (max 4 MB)');
-    const ext = m[1] === 'jpeg' ? 'jpg' : m[1];
-    const key = slot + 'Image';
-    const old = this.imagePath(key);
-    fs.mkdirSync(this.uploads, { recursive: true });
-    const file = path.join(this.uploads, `${slot}.${ext}`);
-    if (old && old !== file) try { fs.unlinkSync(old); } catch {}
-    fs.writeFileSync(file, buf);
-    this.values[key] = { ext, v: crypto.createHash('sha1').update(buf).digest('hex').slice(0, 10) };
+    const type = `image/${m[1]}`;
+    this.store.setBlob(slot, buf, type);
+    this.values[slot + 'Image'] = { type, v: crypto.createHash('sha1').update(buf).digest('hex').slice(0, 10) };
     this.save();
     return this.all();
   }
 
   removeImage(slot) {
-    const key = slot + 'Image';
-    const file = this.imagePath(key);
-    if (file) try { fs.unlinkSync(file); } catch {}
-    this.values[key] = null;
+    if (slot !== 'hero' && slot !== 'logo') throw new Error('Unknown image slot');
+    this.store.delBlob(slot);
+    this.values[slot + 'Image'] = null;
     this.save();
     return this.all();
   }

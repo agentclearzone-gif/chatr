@@ -23,6 +23,7 @@ Node 18+ is required. On this Mac, Node is installed at `~/.local/node/bin`. To 
 | `ADMIN_PASSWORD` | generated | Admin panel password. If not set, one is generated on first start and saved in `data/admin-password.txt` |
 | `IMG_STORE_MB` | `300` | Memory set aside for pictures kept for moderator review. Beyond this, admins see a placeholder |
 | `DATA_DIR` | `./data` | Where the word filter, bans and generated password are stored |
+| `DATABASE_URL` | – | PostgreSQL connection string. When set, all admin data is saved in the database (see *Saving admin settings*) |
 | `GEO_DB` | `city` | `country` uses the 8 MB country-only IP database (no state detection, ~120 MB less memory) |
 | `GEO_LOCK` | off | Set `1` to lock each user's country to their IP location, so the dropdown is disabled and the server enforces it |
 | `GEO_DEV_IP` | – | For local testing only: the IP to look up for requests from localhost, e.g. `193.99.144.80` → Germany |
@@ -50,6 +51,18 @@ The login page asks `GET /geo` for the visitor's **country and state** and pre-s
 - **Matching:** detected region names are matched to the list, ignoring accents, word order and words like "Province". An alias table covers different spellings (e.g. "Mazovia" → "Masovian Voivodeship", "West Java" → "Jawa Barat", France's pre-2016 regions). On 60,000 random IPs, **98.4%** of detected regions matched a list entry: 100% for the US, UK, Germany, France, China, Japan and Korea. The rest (mostly Taiwan, which the IP data only labels "Taiwan") are left for the person to pick.
 - Visitors on the same computer or local network as the server get the server's public-IP location. Behind a proxy, set `TRUST_PROXY=1`. The "IP Geolocation by DB-IP" credit on the login page is required by the license.
 - The admin **Users** table shows each user's IP country flag and a **≠ IP** tag when their chosen country doesn't match.
+
+## Saving admin settings (PostgreSQL or files)
+
+Everything an admin changes is kept in `store.js`: the word filter, bans, anti-spam settings, rooms (with password hashes), and the appearance theme with uploaded pictures and logo. Chats are never saved.
+
+- **`DATABASE_URL` set → PostgreSQL.** Two tables are created automatically: `chat_settings` (JSON values) and `chat_files` (uploaded images). Settings survive restarts and redeploys. That's what you want on Render's free plan, whose disk is wiped on every restart.
+- **Not set → JSON files in `data/`** (local development, or a server with a persistent disk).
+- Everything is loaded into memory at startup, so reading settings never waits for the database. Changes are written in the background, in order. The database is only touched when something changes (plus word-filter hit counts every 30 minutes), so a serverless database like Neon can sleep between admin actions and stay inside its free compute hours.
+- **First connection:** any settings already in local `data/` files are copied into the database automatically.
+- **If the database can't be reached at startup**, the server retries for about 30 seconds and then refuses to start, instead of starting with blank settings that could overwrite your real ones. The admin Overview shows where settings are saved, and flags database errors.
+
+**Free PostgreSQL:** [Neon](https://neon.com) has a free plan that doesn't expire. Create a project, copy the connection string (it ends in `?sslmode=require`), and add it on Render as `DATABASE_URL`. Render's own free PostgreSQL also works, but it is deleted after 30 days.
 
 ## Rooms (Admin → # Rooms)
 

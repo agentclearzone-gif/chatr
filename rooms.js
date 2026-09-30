@@ -1,30 +1,25 @@
 'use strict';
 /*
- * Chat rooms, managed from the admin panel (Rooms page) and saved in data/rooms.json.
+ * Chat rooms, managed from the admin panel (Rooms page) and saved through store.js (database or data/rooms.json).
  * A room can have a password: it is stored as a salted scrypt hash, never in plain text, and
  * checked asynchronously so password attempts can't stall the chat for everyone else.
  */
-const fs = require('fs');
-const path = require('path');
 const crypto = require('crypto');
 
 const MAX_ROOMS = 100;
 const scrypt = (pw, salt) => new Promise((res, rej) => crypto.scrypt(pw, salt, 32, (e, key) => (e ? rej(e) : res(key))));
 
 class Rooms {
-  constructor(dataDir) {
-    this.file = path.join(dataDir, 'rooms.json');
-    let saved = null;
-    try { saved = JSON.parse(fs.readFileSync(this.file, 'utf8')); } catch {}
+  constructor(store) {
+    this.store = store;
+    const saved = store.get('rooms');
     this.list = Array.isArray(saved) && saved.length ? saved : [
       { id: 'main', name: 'Main Room', desc: 'Everyone joins here — keep it friendly', pw: null, created: Date.now() },
     ];
   }
 
   save() {
-    fs.mkdirSync(path.dirname(this.file), { recursive: true });
-    fs.writeFileSync(this.file + '.tmp', JSON.stringify(this.list, null, 2));
-    fs.renameSync(this.file + '.tmp', this.file);
+    this.store.set('rooms', this.list);
   }
 
   get(id) { return this.list.find(r => r.id === id); }

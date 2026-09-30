@@ -1,7 +1,5 @@
 'use strict';
-/* Anti-spam settings, editable from the admin panel and persisted in data/settings.json. */
-const fs = require('fs');
-const path = require('path');
+/* Anti-spam settings, editable from the admin panel and saved through store.js (database or data/settings.json). */
 
 const DEFAULTS = {
   captcha: true,            // bot check at login
@@ -19,10 +17,9 @@ const RANGES = {
 };
 
 class Settings {
-  constructor(file) {
-    this.file = file;
-    let saved = {};
-    try { saved = JSON.parse(fs.readFileSync(file, 'utf8')); } catch {}
+  constructor(store) {
+    this.store = store;
+    const saved = store.get('settings') || {};
     this.values = { ...DEFAULTS };
     try { this.apply(saved); } catch { /* ignore a bad file, keep defaults */ }
   }
@@ -51,8 +48,7 @@ class Settings {
 
   update(patch) {
     this.apply(patch);
-    fs.mkdirSync(path.dirname(this.file), { recursive: true });
-    fs.writeFileSync(this.file, JSON.stringify(this.values, null, 2));
+    this.store.set('settings', this.values);
     return this.all();
   }
 }

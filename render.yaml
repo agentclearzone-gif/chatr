@@ -14,6 +14,9 @@ services:
         value: "1"
       - key: ADMIN_PASSWORD    # Render asks you for this when you create the Blueprint
         sync: false
+      # To keep admin settings (filter, bans, rooms, appearance) across restarts on the free plan,
+      # add DATABASE_URL in the dashboard (Environment tab) with a PostgreSQL connection string,
+      # e.g. from a free Neon database: postgresql://user:pass@ep-xxx.region.aws.neon.tech/neondb?sslmode=require
     # On a paid plan, uncomment to keep the word filter, bans and anti-spam settings across restarts:
     # disk:
     #   name: arabiantalk-data
