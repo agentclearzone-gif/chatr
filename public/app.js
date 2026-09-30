@@ -25,8 +25,9 @@
     users: new Map(),     // id -> {id,name,g,age,loc,cc,seq}
     seq: 0,
     convos: new Map(),    // userId -> {msgs:[], unread, last}
-    room: { msgs: [], unread: 0 },
-    active: 'room',       // 'room' | userId
+    rooms: new Map(),     // roomId -> {id,name,desc,locked,count,joined,msgs:[],unread}
+    joiningRoom: null,    // room the user asked to join (waiting for the server)
+    active: null,         // 'r:<roomId>' for a room, a user id for a private chat, null for none
     filter: 'all', q: '',
     view: [], viewDirty: true,
     pendingAcks: new Map(),
@@ -37,6 +38,9 @@
     draftTo: null,                               // who is currently seeing my live typing
   };
   const MAX_ROOM = 250, MAX_PM = 300;
+  const isRoom = k => typeof k === 'string';
+  const roomKey = id => 'r:' + id;
+  const roomOf = k => S.rooms.get(k.slice(2));
 
   // ---------------- login ----------------
   const SITE = () => document.querySelector('meta[name=application-name]').content || document.title;
@@ -247,14 +251,32 @@
     $('login').hidden = true;
     $('app').hidden = false;
     $('loginNotice').hidden = true;
-    openChat('room');
+    S.rooms.clear();
+    for (const r of m.rooms || []) S.rooms.set(r.id, { ...r, count: (m.rc || {})[r.id] || 0, joined: false, msgs: [], unread: 0 });
+    for (const id of m.in || []) { const r = S.rooms.get(id); if (r) r.joined = true; }
+    renderRooms();
     markDirty();
-    sysMsg('room', `Welcome ${S.me.name}! Say hi to the room, or tap someone to chat privately.`);
+    openDefault();
+    if (isRoom(S.active)) sysMsg(S.active, `Welcome ${S.me.name}! Say hi, join other rooms, or tap someone to chat privately.`);
+  }
+
+  // The first room the user is in, or an empty "pick something" state.
+  function openDefault() {
+    const r = [...S.rooms.values()].find(x => x.joined);
+    if (r) return openChat(roomKey(r.id));
+    S.active = null;
+    $('peer').innerHTML = '<div class="info"><div class="nm">Welcome</div><div class="sub">Join a room or tap someone to chat</div></div>';
+    $('headActions').hidden = true; $('picBtn').hidden = true;
+    $('composer').classList.add('disabled');
+    $('liveNote').hidden = true;
+    $('msgs').replaceChildren();
+    sysMsg(null, 'Pick a room on the left, or tap someone to start a private chat.');
+    renderRooms(); renderList(true);
   }
 
   function resetToLogin(notice) {
     // Everything lives in memory only; drop it all.
-    S.users.clear(); S.convos.clear(); S.room = { msgs: [], unread: 0 }; S.pendingAcks.clear();
+    S.users.clear(); S.convos.clear(); S.rooms.clear(); S.active = null; S.joiningRoom = null; S.pendingAcks.clear();
     S.me = null; S.view = [];
     $('msgs').innerHTML = '';
     document.body.classList.remove('chat-open');
@@ -287,9 +309,51 @@
         for (const id of m.l) userLeft(id);
         markDirty();
         break;
-      case 'room':
-        for (const [id, name, g, x, ts] of m.m) pushMsg('room', { from: id, name, g, x, ts, me: S.me && id === S.me.id });
+      case 'room': {
+        const r = S.rooms.get(m.r);
+        if (!r || !r.joined) break;
+        for (const [id, name, g, x, ts] of m.m) pushMsg(roomKey(m.r), { from: id, name, g, x, ts, me: S.me && id === S.me.id });
         break;
+      }
+      case 'rooms': { // an admin created, renamed, locked or deleted a room
+        const old = S.rooms;
+        S.rooms = new Map();
+        for (const r of m.list) S.rooms.set(r.id, { ...(old.get(r.id) || { joined: false, msgs: [], unread: 0 }), ...r, count: (m.c || {})[r.id] || 0 });
+        renderRooms();
+        if (isRoom(S.active) && roomOf(S.active)) renderPeer();
+        break;
+      }
+      case 'rc':
+        for (const [id, n] of Object.entries(m.c)) { const r = S.rooms.get(id); if (r) r.count = n; }
+        renderRooms();
+        if (isRoom(S.active) && roomOf(S.active)) renderPeer();
+        break;
+      case 'rjoin': {
+        const r = S.rooms.get(m.r);
+        const mine = S.joiningRoom === m.r;
+        if (m.ok && r) {
+          r.joined = true;
+          if (mine) { S.joiningRoom = null; closeRoomPw(); openChat(roomKey(r.id)); }
+          renderRooms();
+        } else if (mine) {
+          if ($('roomPwDlg').open) { $('roomPwErr').textContent = m.e; $('roomPw').select(); }
+          else { S.joiningRoom = null; toast(m.e); }
+        }
+        break;
+      }
+      case 'rclosed': {
+        const r = S.rooms.get(m.r);
+        if (r) { r.joined = false; r.msgs = []; r.unread = 0; }
+        if (S.active === roomKey(m.r)) {
+          $('msgs').replaceChildren();
+          sysMsg(null, m.e);
+          $('composer').classList.add('disabled');
+          $('headActions').hidden = true;
+        }
+        toast(m.e);
+        renderRooms();
+        break;
+      }
       case 'pm': {
         if (!S.users.has(m.f)) return;
         hideDraft(m.f);
@@ -335,7 +399,7 @@
 
   // ---------------- messages ----------------
   function convo(id) {
-    if (id === 'room') return S.room;
+    if (isRoom(id)) return roomOf(id) || { msgs: [], unread: 0 };
     let c = S.convos.get(id);
     if (!c) { c = { msgs: [], unread: 0, last: 0 }; S.convos.set(id, c); }
     return c;
@@ -344,9 +408,9 @@
   function pushMsg(target, msg) {
     const c = convo(target);
     c.msgs.push(msg);
-    const cap = target === 'room' ? MAX_ROOM : MAX_PM;
+    const cap = isRoom(target) ? MAX_ROOM : MAX_PM;
     if (c.msgs.length > cap) c.msgs.splice(0, c.msgs.length - cap);
-    if (target !== 'room') { c.last = Date.now(); markDirty(); }
+    if (!isRoom(target)) { c.last = Date.now(); markDirty(); }
     const visible = S.active === target && !document.hidden && ($('app').offsetParent !== null) &&
       (window.innerWidth > 720 || document.body.classList.contains('chat-open'));
     if (S.active === target) appendMsgEl(msg, target);
@@ -365,7 +429,7 @@
   function msgEl(msg, target) {
     const el = document.createElement('div');
     el.className = 'msg' + (msg.me ? ' me' : '') + (msg.fail ? ' fail' : '');
-    if (target === 'room' && !msg.me) {
+    if (isRoom(target) && !msg.me) {
       const who = document.createElement('div');
       who.className = 'who ' + msg.g; who.textContent = msg.name; who.dataset.uid = msg.from;
       el.appendChild(who);
@@ -401,53 +465,111 @@
     stickToBottom(() => {
       if (draftEl.isConnected) box.insertBefore(el, draftEl); else box.appendChild(el); // keep the live preview last
       // keep the DOM small in the busy main room
-      while (box.childElementCount > (target === 'room' ? MAX_ROOM : MAX_PM)) box.firstElementChild.remove();
+      while (box.childElementCount > (isRoom(target) ? MAX_ROOM : MAX_PM)) box.firstElementChild.remove();
     });
     if (msg.me) box.scrollTop = box.scrollHeight;
   }
 
   // ---------------- open / render a chat ----------------
   function openChat(target) {
-    if (target !== 'room' && !S.users.has(target)) return;
+    if (isRoom(target)) {
+      const r = roomOf(target);
+      if (!r) return;
+      if (!r.joined) return requestJoin(r);
+    } else if (!S.users.has(target)) return;
     if (S.draftTo && S.draftTo !== target) stopSharingDraft();
     S.active = target;
     hideTyping();
     hideDraft();
     const c = convo(target);
     c.unread = 0;
-    const peer = $('peer');
-    if (target === 'room') {
-      peer.innerHTML = `<div class="av room">#</div><div class="info"><div class="nm">Main Room</div><div class="sub">${S.users.size + 1} people online · keep it friendly</div></div>`;
-      $('picBtn').hidden = true;
-      $('headActions').hidden = true;
-    } else {
-      const u = S.users.get(target);
-      peer.innerHTML = `${avatar(u.g)}<div class="info"><div class="nm">${esc(u.name)}</div><div class="sub">${esc(subLine(u))}</div></div>${flagImg(u)}`;
-      $('picBtn').hidden = false;
-      $('headActions').hidden = false;
-    }
+    renderPeer();
     $('composer').classList.remove('disabled');
     renderLiveNote();
     const box = $('msgs');
     const frag = document.createDocumentFragment();
     for (const m of c.msgs) { m.el = msgEl(m, target); frag.appendChild(m.el); }
     box.replaceChildren(frag);
-    if (target !== 'room' && !c.msgs.length) sysMsg(null, 'Private chat. Messages disappear when either of you leaves.');
+    if (!isRoom(target) && !c.msgs.length) sysMsg(null, 'Private chat. Messages disappear when either of you leaves.');
     box.scrollTop = box.scrollHeight;
     document.body.classList.add('chat-open');
     updateBadges(target);
     renderList(true);
+    renderRooms();
     if (window.innerWidth > 720) $('text').focus();
   }
+
+  // Chat header: the room (name, lock, members) or the person you're talking to.
+  function renderPeer() {
+    const target = S.active, peer = $('peer');
+    const inRoom = isRoom(target);
+    if (inRoom) {
+      const r = roomOf(target);
+      peer.innerHTML = `<div class="av room">#</div><div class="info"><div class="nm">${esc(r.name)}${r.locked ? ' <span class="lock" title="Password protected">🔒</span>' : ''}</div>` +
+        `<div class="sub">${r.count} ${r.count === 1 ? 'person' : 'people'} here${r.desc ? ' · ' + esc(r.desc) : ''}</div></div>`;
+    } else {
+      const u = S.users.get(target);
+      peer.innerHTML = `${avatar(u.g)}<div class="info"><div class="nm">${esc(u.name)}</div><div class="sub">${esc(subLine(u))}</div></div>${flagImg(u)}`;
+    }
+    $('picBtn').hidden = inRoom;
+    $('headActions').hidden = false;
+    $('blockBtn').hidden = $('closeBtn').hidden = inRoom;
+    $('leaveRoomBtn').hidden = !inRoom;
+  }
+
+  // ---------------- rooms ----------------
+  let roomsRaf = 0;
+  function renderRooms() {
+    if (roomsRaf) return;
+    roomsRaf = requestAnimationFrame(() => {
+      roomsRaf = 0;
+      const all = [...S.rooms.values()];
+      $('roomsCount').textContent = all.length;
+      $('roomList').innerHTML = all.map(r => `<div class="room-row${S.active === roomKey(r.id) ? ' sel' : ''}${r.joined ? ' joined' : ''}" data-room="${esc(r.id)}">
+          <div class="av room">#</div>
+          <div class="info"><div class="nm">${esc(r.name)}${r.locked ? ' <span class="lock" title="Password protected">🔒</span>' : ''}</div>
+          <div class="sub">${r.count} ${r.count === 1 ? 'person' : 'people'}${r.joined ? '' : ' · tap to join'}</div></div>
+          ${r.unread ? `<span class="badge">${r.unread > 99 ? '99+' : r.unread}</span>` : ''}</div>`).join('') || '<div class="empty">No rooms yet</div>';
+    });
+  }
+  $('roomList').addEventListener('click', e => { const row = e.target.closest('[data-room]'); if (row) openChat(roomKey(row.dataset.room)); });
+
+  function requestJoin(r) {
+    S.joiningRoom = r.id;
+    if (!r.locked) return send({ t: 'rjoin', r: r.id });
+    $('roomPwTitle').textContent = r.name;
+    $('roomPw').value = '';
+    $('roomPwErr').textContent = '';
+    $('roomPwDlg').showModal();
+    $('roomPw').focus();
+  }
+  function closeRoomPw() { if ($('roomPwDlg').open) $('roomPwDlg').close(); }
+  $('roomPwForm').addEventListener('submit', e => {
+    e.preventDefault();
+    const pw = $('roomPw').value;
+    if (!pw) return;
+    $('roomPwErr').textContent = '';
+    send({ t: 'rjoin', r: S.joiningRoom, pw });
+  });
+  $('roomPwCancel').onclick = () => { S.joiningRoom = null; closeRoomPw(); };
+  $('roomPwDlg').addEventListener('cancel', () => { S.joiningRoom = null; });
+  $('leaveRoomBtn').onclick = () => {
+    const r = isRoom(S.active) && roomOf(S.active);
+    if (!r) return;
+    send({ t: 'rleave', r: r.id });
+    r.joined = false; r.msgs = []; r.unread = 0;
+    openDefault();
+    toast(`You left ${r.name}`);
+  };
 
   $('backBtn').onclick = () => { document.body.classList.remove('chat-open'); };
   $('closeBtn').onclick = () => {
     const id = S.active;
-    if (id === 'room') return;
+    if (id == null || isRoom(id)) return;
     S.convos.delete(id);
     markDirty();
     updateTitle();
-    openChat('room');
+    openDefault();
     if (window.innerWidth <= 720) document.body.classList.remove('chat-open');
   };
   $('blockBtn').onclick = () => {
@@ -474,8 +596,9 @@
     const input = $('text');
     const x = input.value.trim();
     if (!x) return;
-    if (S.active === 'room') {
-      if (!send({ t: 'room', x })) return toast('Not connected');
+    if (S.active == null) return;
+    if (isRoom(S.active)) {
+      if (!send({ t: 'room', r: S.active.slice(2), x })) return toast('Not connected');
       // the server echoes our own room message back in the next batch
     } else {
       sendPm({ x });
@@ -495,7 +618,7 @@
   }
 
   $('text').addEventListener('input', () => {
-    if (S.active === 'room') return;
+    if (S.active == null || isRoom(S.active)) return;
     if (S.live && S.liveAllowed) return scheduleDraft();
     const now = Date.now();
     if (now - S.lastTyping > 2500) { S.lastTyping = now; send({ t: 'ty', to: S.active }); }
@@ -513,7 +636,7 @@
     draftTimer = setTimeout(() => {
       draftTimer = 0;
       lastDraftAt = Date.now();
-      if (S.active === 'room' || !S.users.has(S.active)) return;
+      if (isRoom(S.active) || !S.users.has(S.active)) return;
       S.draftTo = S.active;
       send({ t: 'draft', to: S.active, x: $('text').value.slice(0, 500) });
     }, Math.max(0, 120 - (Date.now() - lastDraftAt)));
@@ -548,7 +671,7 @@
   function renderLiveNote() {
     const note = $('liveNote');
     const u = S.users.get(S.active);
-    note.hidden = S.active === 'room' || !u || !S.liveAllowed;
+    note.hidden = isRoom(S.active) || !u || !S.liveAllowed;
     if (note.hidden) return;
     note.innerHTML = S.live
       ? `👁 ${esc(u.name)} can see what you type as you type. <button type="button" data-live="off">Turn off</button>`
@@ -670,7 +793,6 @@
     rest.sort((a, b) => b.seq - a.seq);  // newest first
     S.view = chats.concat(rest);
     $('cAll').textContent = f + m; $('cF').textContent = f; $('cM').textContent = m;
-    $('roomSub').textContent = `${f + m + 1} online`;
     S.viewDirty = false;
   }
 
@@ -701,11 +823,9 @@
     // keep the spacer, replace rows
     list.replaceChildren(spacer);
     list.insertAdjacentHTML('beforeend', html);
-    $('roomRow').classList.toggle('sel', S.active === 'room');
   }
   list.addEventListener('scroll', () => { if (!rafPending) { rafPending = true; requestAnimationFrame(() => { rafPending = false; renderList(); }); } }, { passive: true });
   list.addEventListener('click', e => { const r = e.target.closest('.row'); if (r) openChat(+r.dataset.id); });
-  $('roomRow').onclick = () => openChat('room');
 
   $('tabs').addEventListener('click', e => {
     const b = e.target.closest('button'); if (!b) return;
@@ -718,11 +838,7 @@
 
   // ---------------- badges / title ----------------
   function updateBadges(target) {
-    if (target === 'room') {
-      const b = $('roomBadge');
-      b.hidden = !S.room.unread;
-      b.textContent = S.room.unread > 99 ? '99+' : S.room.unread;
-    } else markDirty();
+    if (isRoom(target)) renderRooms(); else markDirty();
     updateTitle();
   }
   function updateTitle() {
@@ -731,7 +847,7 @@
     document.title = n ? `(${n}) ${SITE()}` : SITE();
   }
   document.addEventListener('visibilitychange', () => {
-    if (!document.hidden && S.me) { const c = convo(S.active); if (c.unread) { c.unread = 0; updateBadges(S.active); } }
+    if (!document.hidden && S.me && S.active != null) { const c = convo(S.active); if (c.unread) { c.unread = 0; updateBadges(S.active); } }
   });
 
   // ---------------- live theme preview (Admin → Appearance shows this page in an iframe) ----------------

@@ -348,16 +348,88 @@
   }
 
   // ================= Main room =================
+  // ---------- room management ----------
+  let roomsData = [], editingRoom = null;
+  async function loadRooms() {
+    roomsData = (await api('/rooms')).rooms;
+    $('navRooms').textContent = roomsData.length;
+    // don't redraw under the admin's cursor while a row button is focused
+    if (!$('roomTable').contains(document.activeElement)) {
+      $('roomTable').tBodies[0].innerHTML = roomsData.length ? roomsData.map((r, i) => `<tr data-id="${esc(r.id)}">
+        <td><b>${esc(r.name)}</b>${i === roomsData.findIndex(x => !x.locked) ? ' <span class="tag" style="background:#eef4fc;color:#1c5fb0">Lobby</span>' : ''}${r.desc ? `<div class="muted">${esc(r.desc)}</div>` : ''}</td>
+        <td>${r.locked ? '🔒 Password' : 'Open'}</td>
+        <td class="num"><b>${fmt(r.members)}</b></td>
+        <td class="num">${fmt(r.messages)}</td>
+        <td class="actions">
+          <button class="btn sm ghost" data-move="-1" ${i === 0 ? 'disabled' : ''} title="Move up">↑</button><button class="btn sm ghost" data-move="1" ${i === roomsData.length - 1 ? 'disabled' : ''} title="Move down">↓</button>
+          <button class="btn sm ghost" data-edit>Edit</button><button class="btn sm outline-danger" data-del>Delete</button></td></tr>`).join('')
+        : '<tr><td colspan="5" class="empty">No rooms. Create one →</td></tr>';
+    }
+    const f = $('roomFilter'), cur = f.value;
+    f.innerHTML = '<option value="">All rooms</option>' + roomsData.map(r => `<option value="${esc(r.id)}">${esc(r.name)}</option>`).join('');
+    f.value = roomsData.some(r => r.id === cur) ? cur : '';
+  }
+  function resetRoomForm() {
+    editingRoom = null;
+    $('roomForm').reset();
+    $('roomFormTitle').textContent = 'Create a room'; $('roomFormBtn').textContent = 'Create room';
+    $('rfPwLabel').innerHTML = 'Password <span class="muted">(optional; leave empty for an open room)</span>';
+    $('roomFormCancel').hidden = true; $('rfRemoveWrap').hidden = true; $('roomFormErr').textContent = '';
+  }
+  $('roomFormCancel').onclick = resetRoomForm;
+  $('roomTable').addEventListener('click', async e => {
+    const tr = e.target.closest('tr[data-id]'); if (!tr) return;
+    const r = roomsData.find(x => x.id === tr.dataset.id); if (!r) return;
+    try {
+      if (e.target.closest('[data-move]')) {
+        await api(`/rooms/${r.id}/move`, { method: 'POST', body: { dir: +e.target.closest('[data-move]').dataset.move } });
+      } else if (e.target.closest('[data-edit]')) {
+        editingRoom = r.id;
+        $('rfName').value = r.name; $('rfDesc').value = r.desc || ''; $('rfPw').value = ''; $('rfRemovePw').checked = false;
+        $('roomFormTitle').textContent = `Edit “${r.name}”`; $('roomFormBtn').textContent = 'Save changes';
+        $('rfPwLabel').innerHTML = r.locked ? 'New password <span class="muted">(leave empty to keep the current one)</span>' : 'Password <span class="muted">(optional; set one to lock the room)</span>';
+        $('rfRemoveWrap').hidden = !r.locked; $('roomFormCancel').hidden = false; $('roomFormErr').textContent = '';
+        $('rfName').focus();
+        return;
+      } else if (e.target.closest('[data-del]')) {
+        if (!confirm(`Delete “${r.name}”? The ${r.members} ${r.members === 1 ? 'person' : 'people'} in it will be removed from the room.`)) return;
+        await api(`/rooms/${r.id}`, { method: 'DELETE' });
+        if (editingRoom === r.id) resetRoomForm();
+        toast(`“${r.name}” deleted`);
+      } else return;
+      e.target.blur();
+      await loadRooms();
+    } catch (err) { toast(err.message); }
+  });
+  $('roomForm').addEventListener('submit', async e => {
+    e.preventDefault();
+    $('roomFormErr').textContent = '';
+    const body = { name: $('rfName').value, desc: $('rfDesc').value, password: $('rfPw').value };
+    try {
+      if (editingRoom) {
+        if ($('rfRemovePw').checked) body.removePassword = true;
+        await api(`/rooms/${editingRoom}`, { method: 'PATCH', body });
+        toast('Room updated');
+      } else {
+        await api('/rooms', { method: 'POST', body });
+        toast(`Room “${body.name.trim()}” created`);
+      }
+      resetRoomForm();
+      await loadRooms();
+    } catch (err) { $('roomFormErr').textContent = err.message; }
+  });
+
   async function loadRoom() {
-    const d = await api('/room');
+    const [d] = await Promise.all([api('/room'), loadRooms()]);
     const q = $('roomSearch').value.trim().toLowerCase();
     const flaggedOnly = $('roomFlagged').checked;
+    const only = $('roomFilter').value;
     const box = $('roomLog');
     const atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 60;
-    const rows = d.msgs.filter(m => (!flaggedOnly || m.blocked || m.o) && (!q || m.name.toLowerCase().includes(q) || m.x.toLowerCase().includes(q) || (m.o || '').toLowerCase().includes(q)));
+    const rows = d.msgs.filter(m => (!only || m.r === only) && (!flaggedOnly || m.blocked || m.o) && (!q || m.name.toLowerCase().includes(q) || m.x.toLowerCase().includes(q) || (m.o || '').toLowerCase().includes(q)));
     box.innerHTML = rows.length ? rows.map(m => `
       <div class="rl${m.blocked ? ' blocked' : ''}">
-        <time>${clock(m.ts)}</time>
+        <time>${clock(m.ts)}${!only && m.rn ? `<span class="rn">#${esc(m.rn)}</span>` : ''}</time>
         <a class="who" href="#convos" data-user="${m.f}" data-name="${esc(m.name)}" style="color:inherit;text-decoration:none" title="View ${esc(m.name)}'s private chats"><i class="dot ${m.g}"></i>${esc(m.name)}</a>
         <span class="txt">${esc(m.x)}${m.o ? `<span class="orig">Original: ${esc(m.o)}</span>` : ''}</span>
         <span>${m.blocked ? '<span class="tag block">Blocked</span>' : m.o ? '<span class="tag mask">Masked</span>' : ''}
@@ -366,6 +438,7 @@
     if (atBottom) box.scrollTop = box.scrollHeight;
   }
   $('roomSearch').addEventListener('input', () => refresh());
+  $('roomFilter').addEventListener('change', () => refresh());
   $('roomFlagged').addEventListener('change', () => refresh());
   document.addEventListener('click', e => {
     const a = e.target.closest('[data-user]');

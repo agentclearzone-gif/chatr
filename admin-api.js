@@ -228,6 +228,30 @@ module.exports = function createAdminApi(ctx) {
       catch (e) { return json(res, 400, { error: e.message }); }
     }
 
+    if (p === '/rooms' && method === 'GET') return json(res, 200, { rooms: ctx.rooms.list() });
+    if (p === '/rooms' && method === 'POST') {
+      try { await ctx.rooms.create(await readBody(req)); } catch (e) { return json(res, 400, { error: e.message }); }
+      return json(res, 200, { rooms: ctx.rooms.list() });
+    }
+    if ((m = p.match(/^\/rooms\/([\w-]+)$/))) {
+      if (method === 'PATCH') {
+        const body = await readBody(req);
+        const patch = { name: body.name, desc: body.desc };
+        if (body.removePassword) patch.password = '';
+        else if (typeof body.password === 'string' && body.password !== '') patch.password = body.password;
+        try { await ctx.rooms.update(m[1], patch); } catch (e) { return json(res, 400, { error: e.message }); }
+        return json(res, 200, { rooms: ctx.rooms.list() });
+      }
+      if (method === 'DELETE') {
+        return ctx.rooms.remove(m[1]) ? json(res, 200, { rooms: ctx.rooms.list() }) : json(res, 404, { error: 'Room not found' });
+      }
+    }
+    if ((m = p.match(/^\/rooms\/([\w-]+)\/move$/)) && method === 'POST') {
+      const body = await readBody(req);
+      ctx.rooms.move(m[1], body.dir === -1 ? -1 : 1);
+      return json(res, 200, { rooms: ctx.rooms.list() });
+    }
+
     if (p === '/theme' && method === 'GET') return json(res, 200, ctx.themeInfo());
     if (p === '/theme' && method === 'PUT') {
       try { theme.update(await readBody(req)); } catch (e) { return json(res, 400, { error: e.message }); }

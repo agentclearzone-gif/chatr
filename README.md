@@ -51,6 +51,15 @@ The login page asks `GET /geo` for the visitor's **country and state** and pre-s
 - Visitors on the same computer or local network as the server get the server's public-IP location. Behind a proxy, set `TRUST_PROXY=1`. The "IP Geolocation by DB-IP" credit on the login page is required by the license.
 - The admin **Users** table shows each user's IP country flag and a **≠ IP** tag when their chosen country doesn't match.
 
+## Rooms (Admin → # Rooms)
+
+- **Create, edit, reorder and delete rooms.** Each room has a name, an optional description and an optional **password**.
+- **Password-protected rooms** show a 🔒 in the room list. Users must enter the password to join; the server checks it. Passwords are stored as salted scrypt hashes in `data/rooms.json`, never in plain text. Password checks run off the main thread, so guessing can't slow the chat down. Wrong guesses are rate-limited (5 tries, then one every 10 seconds), and hammering past that counts as a spam strike.
+- **Changing a room's password** doesn't remove people already inside; it applies to new joiners. **Deleting a room** removes everyone in it, with a notice, and clears its messages from the moderation log.
+- **Everyone lands in the first room without a password**, so the order of rooms matters. Use ↑ ↓ to change it.
+- Users see all rooms in the sidebar with live member counts and unread badges, can be in several rooms at once, and can leave any room. Room messages are sent **only to that room's members**, so extra rooms don't slow anything down at 7,000 users.
+- The room message log (moderation) has a room filter.
+
 ## Appearance (Admin → 🎨 Appearance)
 
 The default look is **Dubai Gold**: a cream background with an Arabic geometric pattern, a gold dome logo, a two-tone "Arabian**Talk**" wordmark, a Dubai skyline in the corner of the login card, gold icon badges and a gold gradient button. The chat screens use the same accent color.

@@ -24,6 +24,7 @@ const Geo = require('./geo.js');
 const Settings = require('./settings.js');
 const Captcha = require('./captcha.js');
 const AntiSpam = require('./antispam.js');
+const Rooms = require('./rooms.js');
 
 const PORT = +process.env.PORT || 3000;
 const MAX_USERS = +process.env.MAX_USERS || 10000;
@@ -124,12 +125,15 @@ const users = new Map();      // id -> user
 const names = new Set();      // lowercase usernames in use
 const ipCount = new Map();
 const convos = new Map();     // "a-b" -> private conversation (while both users are online)
-const roomLog = [];           // last ROOM_LOG_SIZE main-room messages, for moderators
+const roomLog = [];           // last ROOM_LOG_SIZE room messages (all rooms), for moderators
+const roomMembers = new Map(); // room id -> Set of users currently in it
+const roomMsgCount = new Map(); // room id -> messages since server start
 let imgStoreBytes = 0;
 let nextId = 1;
 let pendingJoins = [];
 let pendingLeaves = [];
-let pendingRoom = [];
+const pendingRoom = new Map(); // room id -> messages waiting for the next flush
+let roomCountsDirty = false;
 let snapshot = null;          // cached JSON of the user list, rebuilt lazily
 
 const stats = {
@@ -143,12 +147,13 @@ const stats = {
   history: [],                // [ts, online] every 30s, last 24h
   spam: {
     captchaPassed: 0, captchaFailed: 0, honeypot: 0, links: 0, duplicates: 0, newUser: 0,
-    massPm: 0, rateLimited: 0, badWords: 0, mutedAttempts: 0, autoMutes: 0, autoKicks: 0,
+    massPm: 0, rateLimited: 0, badWords: 0, mutedAttempts: 0, roomPassword: 0, autoMutes: 0, autoKicks: 0,
   },
 };
 const filter = new WordFilter(path.join(DATA_DIR, 'filters.json'));
 const bans = new Bans(path.join(DATA_DIR, 'bans.json'));
 const settings = new Settings(path.join(DATA_DIR, 'settings.json'));
+const rooms = new Rooms(DATA_DIR);
 const captcha = new Captcha({ settings, stats });
 const antispam = new AntiSpam({
   settings, stats,
@@ -174,6 +179,27 @@ const adminApi = createAdminApi({
   users, convos, roomLog, stats, filter, bans, settings, captcha, clientIp, dataDir: DATA_DIR,
   theme, themeInfo: () => ({ theme: theme.all(), presets: Theme.PRESETS, defaultLogo: Theme.DEFAULT_LOGO, heroDefault: HERO_DEFAULT, ...themeAssets(theme.all()) }),
   onThemeChange: renderIndex,
+  rooms: {
+    list: () => rooms.list.map(r => ({ id: r.id, name: r.name, desc: r.desc, locked: !!r.pw, created: r.created,
+      members: (roomMembers.get(r.id) || EMPTY).size, messages: roomMsgCount.get(r.id) || 0 })),
+    async create(data) { const r = await rooms.create(data); broadcastRooms(); return r; },
+    async update(id, data) { const r = await rooms.update(id, data); broadcastRooms(); return r; },
+    move(id, dir) { rooms.move(id, dir); broadcastRooms(); },
+    remove(id) {
+      const room = rooms.remove(id);
+      if (!room) return false;
+      for (const u of roomMembers.get(id) || []) {
+        u.rooms.delete(id);
+        send(u.ws, { t: 'rclosed', r: id, e: `“${room.name}” was closed by a moderator.` });
+      }
+      roomMembers.delete(id); pendingRoom.delete(id); roomMsgCount.delete(id);
+      let w = 0;
+      for (let i = 0; i < roomLog.length; i++) if (roomLog[i].r !== id) roomLog[w++] = roomLog[i];
+      roomLog.length = w;
+      broadcastRooms();
+      return true;
+    },
+  },
   kick(u, reason) {
     stats.kicks++;
     kickUser(u, reason ? `You were removed by a moderator: ${reason}` : 'You were removed by a moderator.');
@@ -348,6 +374,8 @@ function handle(ws, m) {
 
   switch (m.t) {
     case 'room': {
+      const room = rooms.get(typeof m.r === 'string' ? m.r : 'main');
+      if (!room || !u.rooms.has(room.id)) return send(ws, { t: 'err', e: 'Join the room before posting in it.' });
       const text = cleanText(m.x, MAX_TEXT);
       if (!text) return;
       const muted = antispam.checkMuted(u);
@@ -364,14 +392,23 @@ function handle(ws, m) {
       if (r.blocked) {
         stats.filtered.blocked++;
         if (antispam.strike(u, 'badWords')) return;
-        logRoom({ f: u.id, name: u.name, g: u.g, x: text, ts, blocked: true });
+        logRoom({ r: room.id, rn: room.name, f: u.id, name: u.name, g: u.g, x: text, ts, blocked: true });
         return send(ws, { t: 'err', e: 'Message not sent: it contains a word that isn\'t allowed.' });
       }
       if (r.masked) stats.filtered.masked++;
       stats.messages.room++;
-      logRoom({ f: u.id, name: u.name, g: u.g, x: r.text, ts, ...(r.masked ? { o: text } : {}) });
-      pendingRoom.push([u.id, u.name, u.g, r.text, ts]);
+      logRoom({ r: room.id, rn: room.name, f: u.id, name: u.name, g: u.g, x: r.text, ts, ...(r.masked ? { o: text } : {}) });
+      roomMsgCount.set(room.id, (roomMsgCount.get(room.id) || 0) + 1);
+      let q = pendingRoom.get(room.id);
+      if (!q) pendingRoom.set(room.id, q = []);
+      q.push([u.id, u.name, u.g, r.text, ts]);
       return;
+    }
+    case 'rjoin':
+      return roomJoinRequest(ws, u, m).catch(e => console.error('[rjoin]', e));
+    case 'rleave': {
+      if (typeof m.r === 'string') leaveRoom(u, m.r);
+      return send(ws, { t: 'rleave', r: m.r });
     }
     case 'pm': {
       const to = users.get(m.to);
@@ -451,6 +488,60 @@ function handle(ws, m) {
   }
 }
 
+// ---------- rooms ----------
+const EMPTY = new Set();
+function membersOf(id) {
+  let s = roomMembers.get(id);
+  if (!s) roomMembers.set(id, s = new Set());
+  return s;
+}
+function joinRoom(u, room) {
+  if (u.rooms.has(room.id)) return;
+  u.rooms.add(room.id);
+  membersOf(room.id).add(u);
+  roomCountsDirty = true;
+}
+function leaveRoom(u, id) {
+  if (!u.rooms.delete(id)) return;
+  const s = roomMembers.get(id);
+  if (s) s.delete(u);
+  roomCountsDirty = true;
+}
+function roomCounts() {
+  const c = {};
+  for (const r of rooms.list) c[r.id] = (roomMembers.get(r.id) || EMPTY).size;
+  return c;
+}
+function broadcastRooms() {
+  broadcast(JSON.stringify({ t: 'rooms', list: rooms.publicList(), c: roomCounts() }));
+}
+function sendToRoom(id, str) {
+  const s = roomMembers.get(id);
+  if (!s || !s.size) return;
+  const buf = Buffer.from(str);
+  for (const u of s) {
+    const ws = u.ws;
+    if (ws.readyState === 1 && ws.bufferedAmount < SLOW_CLIENT_BYTES) ws.send(buf, { binary: false });
+  }
+}
+async function roomJoinRequest(ws, u, m) {
+  const room = typeof m.r === 'string' && rooms.get(m.r);
+  if (!room) return send(ws, { t: 'rjoin', r: m.r, ok: false, e: 'This room no longer exists.' });
+  if (u.rooms.has(room.id)) return send(ws, { t: 'rjoin', r: room.id, ok: true });
+  if (room.pw) {
+    // 5 tries, then one every 10 seconds; hammering past that counts as a spam strike
+    if (!allow(u.roomPwBucket, 0.1, 5)) {
+      antispam.strike(u, 'roomPassword');
+      return send(ws, { t: 'rjoin', r: room.id, ok: false, e: 'Too many attempts. Please wait a bit.' });
+    }
+    const ok = await rooms.checkPassword(room, m.pw);
+    if (ws.user !== u || rooms.get(room.id) !== room) return; // left or room deleted meanwhile
+    if (!ok) return send(ws, { t: 'rjoin', r: room.id, ok: false, e: 'Wrong password.' });
+  }
+  joinRoom(u, room);
+  send(ws, { t: 'rjoin', r: room.id, ok: true });
+}
+
 // The state must come from the chosen country's list (or be empty for countries without states).
 function validState(cc, loc) {
   const list = Geo.STATES[cc] || [];
@@ -502,8 +593,8 @@ async function join(ws, m) {
   clearTimeout(ws.joinTimer);
   const u = {
     id: nextId++, name, g, age, loc, cc, ws, ip: ws.ip, ipcc: ws.ipcc, device, joined: Date.now(), msgCount: 0,
-    roomBucket: bucket(4), pmBucket: bucket(15), imgBucket: bucket(3), tyBucket: bucket(3), draftBucket: bucket(30),
-    blocked: new Set(), convoKeys: new Set(),
+    roomBucket: bucket(4), pmBucket: bucket(15), imgBucket: bucket(3), tyBucket: bucket(3), draftBucket: bucket(30), roomPwBucket: bucket(5),
+    blocked: new Set(), convoKeys: new Set(), rooms: new Set(),
   };
   u.tuple = [u.id, name, g, age, loc, cc];
   antispam.init(u);
@@ -512,7 +603,12 @@ async function join(ws, m) {
   // Snapshot reflects the list as of its last rebuild; anything newer arrives in the next
   // batched delta (clients apply joins/leaves idempotently), so it is rebuilt at most once per tick.
   if (snapshot === null) snapshot = JSON.stringify(Array.from(users.values(), x => x.tuple));
-  ws.send('{"t":"welcome","live":' + settings.get('liveTyping') + ',"me":' + JSON.stringify(u.tuple) + ',"users":' + snapshot + '}');
+  // Everyone lands in the first room without a password (admins control the order).
+  const lobby = rooms.list.find(r => !r.pw);
+  if (lobby) joinRoom(u, lobby);
+  ws.send('{"t":"welcome","live":' + settings.get('liveTyping') + ',"me":' + JSON.stringify(u.tuple) +
+    ',"rooms":' + JSON.stringify(rooms.publicList()) + ',"rc":' + JSON.stringify(roomCounts()) + ',"in":' + JSON.stringify([...u.rooms]) +
+    ',"users":' + snapshot + '}');
 
   users.set(u.id, u);
   names.add(name.toLowerCase());
@@ -530,6 +626,7 @@ function leave(ws) {
   users.delete(u.id);
   names.delete(u.name.toLowerCase());
   pendingLeaves.push(u.id);
+  for (const id of [...u.rooms]) leaveRoom(u, id);
 
   // Delete every private conversation this user was part of…
   for (const key of u.convoKeys) {
@@ -540,7 +637,7 @@ function leave(ws) {
     const other = users.get(c.a === u.id ? c.b : c.a);
     if (other) other.convoKeys.delete(key);
   }
-  // …and their main-room messages from the moderation log.
+  // …and their room messages from the moderation log.
   let w = 0;
   for (let i = 0; i < roomLog.length; i++) if (roomLog[i].f !== u.id) roomLog[w++] = roomLog[i];
   roomLog.length = w;
@@ -554,7 +651,7 @@ function broadcast(str) {
   }
 }
 
-// One tick: presence delta + main-room batch.
+// One tick: presence delta + each room's batch (sent only to that room's members).
 setInterval(() => {
   if (pendingJoins.length || pendingLeaves.length) {
     const msg = JSON.stringify({ t: 'ud', j: pendingJoins, l: pendingLeaves });
@@ -563,12 +660,19 @@ setInterval(() => {
     snapshot = null;
     broadcast(msg);
   }
-  if (pendingRoom.length) {
-    const batch = pendingRoom.length > MAX_ROOM_MSGS_PER_FLUSH ? pendingRoom.splice(0, MAX_ROOM_MSGS_PER_FLUSH) : pendingRoom;
-    if (batch === pendingRoom) pendingRoom = [];
-    broadcast(JSON.stringify({ t: 'room', m: batch }));
+  for (const [id, q] of pendingRoom) {
+    const batch = q.splice(0, MAX_ROOM_MSGS_PER_FLUSH);
+    if (!q.length) pendingRoom.delete(id);
+    sendToRoom(id, JSON.stringify({ t: 'room', r: id, m: batch }));
   }
 }, FLUSH_MS);
+
+// Room member counts for everyone's room list, at most every 3 seconds.
+setInterval(() => {
+  if (!roomCountsDirty) return;
+  roomCountsDirty = false;
+  broadcast(JSON.stringify({ t: 'rc', c: roomCounts() }));
+}, 3000);
 
 // Drop dead connections so their users disappear from the list.
 setInterval(() => {

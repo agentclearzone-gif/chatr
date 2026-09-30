@@ -103,11 +103,11 @@
         <button data-f="m">Male <b id="cM">0</b></button>
       </div>
     </div>
-    <div class="room-row" id="roomRow">
-      <div class="av room">#</div>
-      <div class="info"><div class="nm">Main Room</div><div class="sub" id="roomSub">Everyone online</div></div>
-      <span class="badge" id="roomBadge" hidden></span>
+    <div class="rooms">
+      <div class="rooms-head">Rooms <b id="roomsCount"></b></div>
+      <div class="room-list" id="roomList"></div>
     </div>
+    <div class="people-head">People online</div>
     <div class="list" id="list"><div class="spacer" id="spacer"></div></div>
   </aside>
 
@@ -116,6 +116,7 @@
       <button class="icon-btn back" id="backBtn" aria-label="Back">‹</button>
       <div class="peer" id="peer"></div>
       <div class="head-actions" id="headActions">
+        <button class="leave-btn" id="leaveRoomBtn" type="button" hidden>Leave room</button>
         <button class="icon-btn" id="blockBtn" title="Block user" aria-label="Block user">⛔</button>
         <button class="icon-btn" id="closeBtn" title="Close chat &amp; delete history" aria-label="Close chat">✕</button>
       </div>
@@ -133,6 +134,20 @@
     </form>
   </section>
 </main>
+
+<dialog class="pw-dlg" id="roomPwDlg">
+  <form id="roomPwForm" autocomplete="off">
+    <div class="pw-ic" aria-hidden="true">🔒</div>
+    <h3 id="roomPwTitle">Room</h3>
+    <p>This room is password protected.</p>
+    <input type="password" id="roomPw" maxlength="64" placeholder="Room password" autocomplete="off">
+    <div class="err" id="roomPwErr"></div>
+    <div class="pw-actions">
+      <button type="button" class="leave-btn" id="roomPwCancel">Cancel</button>
+      <button type="submit" class="pw-join">Join room</button>
+    </div>
+  </form>
+</dialog>
 
 <div class="lightbox" id="lightbox" hidden><img alt=""></div>
 <div class="toast" id="toast" hidden></div>
