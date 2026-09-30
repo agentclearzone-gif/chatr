@@ -12,7 +12,7 @@ const SESSION_MS = 12 * 60 * 60 * 1000;
 const COOKIE = 'chatr_admin';
 
 module.exports = function createAdminApi(ctx) {
-  const { users, convos, roomLog, stats, filter, bans, settings, captcha, clientIp } = ctx;
+  const { users, convos, roomLog, stats, filter, bans, settings, captcha, theme, clientIp } = ctx;
   let password = process.env.ADMIN_PASSWORD;
   if (!password) {
     // No env var: generate one once and keep it in data/admin-password.txt (readable only by this OS user).
@@ -226,6 +226,24 @@ module.exports = function createAdminApi(ctx) {
     if (p === '/antispam' && method === 'PUT') {
       try { return json(res, 200, { settings: settings.update(await readBody(req)) }); }
       catch (e) { return json(res, 400, { error: e.message }); }
+    }
+
+    if (p === '/theme' && method === 'GET') return json(res, 200, ctx.themeInfo());
+    if (p === '/theme' && method === 'PUT') {
+      try { theme.update(await readBody(req)); } catch (e) { return json(res, 400, { error: e.message }); }
+      ctx.onThemeChange();
+      return json(res, 200, ctx.themeInfo());
+    }
+    if (p === '/theme/image' && method === 'POST') {
+      const body = await readBody(req, 6 * 1024 * 1024);
+      try { theme.saveImage(body.slot, body.data); } catch (e) { return json(res, 400, { error: e.message }); }
+      ctx.onThemeChange();
+      return json(res, 200, ctx.themeInfo());
+    }
+    if ((m = p.match(/^\/theme\/image\/(hero|logo)$/)) && method === 'DELETE') {
+      theme.removeImage(m[1]);
+      ctx.onThemeChange();
+      return json(res, 200, ctx.themeInfo());
     }
 
     if (p === '/bans' && method === 'GET') return json(res, 200, { bans: bans.list() });

@@ -51,6 +51,17 @@ The login page asks `GET /geo` for the visitor's **country and state** and pre-s
 - Visitors on the same computer or local network as the server get the server's public-IP location. Behind a proxy, set `TRUST_PROXY=1`. The "IP Geolocation by DB-IP" credit on the login page is required by the license.
 - The admin **Users** table shows each user's IP country flag and a **≠ IP** tag when their chosen country doesn't match.
 
+## Appearance (Admin → 🎨 Appearance)
+
+The default look is **Dubai Gold**: a cream background with an Arabic geometric pattern, a gold dome logo, a two-tone "Arabian**Talk**" wordmark, a Dubai skyline in the corner of the login card, gold icon badges and a gold gradient button. The chat screens use the same accent color.
+
+Everything is editable from the admin panel, with a live phone preview:
+- **Color presets:** Dubai Gold, Rose, Emerald Oasis, Royal Blue, Desert Rose. You can also set your own main color, dark shade, page and card backgrounds, and text colors. It warns you if the main color is too light for white button text.
+- **Texts:** site name (plain part + colored part), tagline, login description and button text.
+- **Images:** upload your own corner picture and logo (PNG, JPEG or WebP; resized in the browser before upload; max 4 MB), or switch back to the defaults. SVG uploads are refused because they can contain scripts. You can also turn the corner picture and background pattern on or off.
+
+Settings are saved in `data/theme.json` and images in `data/uploads/`. The server writes them into the login page itself, so visitors never see the old look flash first. The default skyline (`public/hero-dubai.svg`) is an original illustration.
+
 ## Anti-spam and bot protection
 
 All settings are on the admin **🛡️ Anti-spam** page, take effect immediately, and are saved in `data/settings.json`.

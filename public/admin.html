@@ -33,6 +33,7 @@
     <a href="#room" data-view="room"># Main Room</a>
     <a href="#users" data-view="users">👥 Users <b id="navUsers"></b></a>
     <a href="#filter" data-view="filter">🚫 Word filter</a>
+    <a href="#appearance" data-view="appearance">🎨 Appearance</a>
     <a href="#spam" data-view="spam">🛡️ Anti-spam</a>
     <a href="#bans" data-view="bans">⛔ Bans</a>
     <div class="nav-foot">
@@ -167,6 +168,65 @@
             <thead><tr><th>Word</th><th>Match</th><th>Action</th><th class="num">Hits</th><th>Added</th><th></th></tr></thead>
             <tbody></tbody>
           </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- Appearance -->
+    <section class="view" id="v-appearance" hidden>
+      <header class="vh"><h1>Appearance</h1><span class="muted">Changes show in the preview instantly; visitors see them after you press Save.</span></header>
+      <div class="appear">
+        <div class="appear-form">
+          <div class="panel">
+            <div class="ph"><h2>Color theme</h2><span class="muted" id="presetNote"></span></div>
+            <div class="presets" id="presets"></div>
+            <div class="colors" id="colorFields"></div>
+            <p class="contrast-warn" id="contrastWarn" hidden></p>
+          </div>
+          <div class="panel">
+            <div class="ph"><h2>Site name &amp; texts</h2></div>
+            <div class="row">
+              <label class="fld">Site name — first part <input data-t="brandMain" maxlength="24"></label>
+              <label class="fld">Site name — colored part <input data-t="brandAccent" maxlength="24"></label>
+            </div>
+            <label class="fld">Tagline under the name <input data-t="tagline" maxlength="60" placeholder="CHAT • CONNECT • DUBAI"></label>
+            <label class="fld" style="margin-top:12px">Description on the login page <textarea data-t="description" rows="3" maxlength="300"></textarea></label>
+            <label class="fld" style="margin-top:12px">Login button text <input data-t="buttonText" maxlength="30"></label>
+          </div>
+          <div class="panel">
+            <div class="ph"><h2>Images</h2></div>
+            <div class="img-slots">
+              <div class="img-slot">
+                <div class="img-thumb hero-thumb" id="heroThumb"></div>
+                <div>
+                  <b>Corner picture</b>
+                  <p class="muted">Shown in the top-right of the login card. A wide photo works best (e.g. 1200×1000). PNG, JPEG or WebP.</p>
+                  <label class="btn sm ghost file-btn">Upload picture<input type="file" accept="image/png,image/jpeg,image/webp" data-slot="hero" hidden></label>
+                  <button class="btn sm ghost" type="button" data-reset-img="hero" id="heroReset">Use default skyline</button>
+                  <label class="chk" style="margin-top:10px"><input type="checkbox" data-t="showHero"> Show corner picture</label>
+                </div>
+              </div>
+              <div class="img-slot">
+                <div class="img-thumb logo-thumb" id="logoThumb"></div>
+                <div>
+                  <b>Logo</b>
+                  <p class="muted">Square or tall image with a transparent background (PNG) looks best.</p>
+                  <label class="btn sm ghost file-btn">Upload logo<input type="file" accept="image/png,image/jpeg,image/webp" data-slot="logo" hidden></label>
+                  <button class="btn sm ghost" type="button" data-reset-img="logo" id="logoReset">Use default logo</button>
+                </div>
+              </div>
+            </div>
+            <label class="chk" style="margin-top:14px"><input type="checkbox" data-t="showPattern"> Show the Arabic pattern in the page background</label>
+          </div>
+          <div class="save-bar">
+            <span class="muted" id="dirtyNote"></span>
+            <button class="btn ghost" type="button" id="themeDiscard">Discard changes</button>
+            <button class="btn primary" type="button" id="themeSave">Save</button>
+          </div>
+        </div>
+        <div class="appear-preview">
+          <div class="phone"><iframe id="themeFrame" title="Login page preview" src="about:blank"></iframe></div>
+          <p class="muted" style="text-align:center">Live preview of the login page</p>
         </div>
       </div>
     </section>

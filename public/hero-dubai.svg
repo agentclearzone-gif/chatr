@@ -1,0 +1,96 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 700" preserveAspectRatio="xMidYMid slice">
+  <!-- Default ArabianTalk hero: stylised Dubai skyline at sunset (original artwork). Replace from Admin → Appearance. -->
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#c9a27a"/>
+      <stop offset=".28" stop-color="#f0c48a"/>
+      <stop offset=".58" stop-color="#f7d7a4"/>
+      <stop offset=".72" stop-color="#fbe8c6"/>
+    </linearGradient>
+    <radialGradient id="sun" cx="300" cy="455" r="170" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#fffbe9"/>
+      <stop offset=".25" stop-color="#fff1c9" stop-opacity=".9"/>
+      <stop offset="1" stop-color="#fbe2b3" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="burj" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#8f7a6b"/>
+      <stop offset=".5" stop-color="#b8a594"/>
+      <stop offset=".5" stop-color="#7d6a5d"/>
+      <stop offset="1" stop-color="#6e5d52"/>
+    </linearGradient>
+    <linearGradient id="tower" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#a08979"/>
+      <stop offset="1" stop-color="#7f6c60"/>
+    </linearGradient>
+    <linearGradient id="sand" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#e8c393"/>
+      <stop offset="1" stop-color="#d6a86f"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="600" height="700" fill="url(#sky)"/>
+  <circle cx="300" cy="455" r="170" fill="url(#sun)"/>
+  <circle cx="300" cy="455" r="34" fill="#fff8e2" opacity=".95"/>
+  <g fill="#fff" opacity=".28">
+    <ellipse cx="120" cy="150" rx="120" ry="16"/>
+    <ellipse cx="470" cy="210" rx="150" ry="14"/>
+    <ellipse cx="260" cy="95" rx="90" ry="10"/>
+  </g>
+
+  <!-- distant haze towers -->
+  <g fill="#d2a87f" opacity=".55">
+    <rect x="30" y="400" width="26" height="90"/><rect x="62" y="370" width="20" height="120"/>
+    <rect x="160" y="385" width="24" height="105"/><rect x="420" y="380" width="22" height="110"/>
+    <rect x="452" y="405" width="30" height="85"/><rect x="530" y="395" width="24" height="95"/>
+  </g>
+  <!-- mid towers -->
+  <g fill="url(#tower)">
+    <path d="M88 490V330l14-12 14 12v160z"/>
+    <path d="M128 490V360h26v130z"/>
+    <path d="M190 490V300l10-30 10 30v190z"/>
+    <path d="M222 490V345h22v145z"/>
+    <path d="M392 490V310h24l6 12v168z"/>
+    <path d="M430 490V350l12-16 12 16v140z"/>
+    <path d="M470 490V372h24v118z"/>
+  </g>
+  <g fill="#f6dcb4" opacity=".35">
+    <rect x="96" y="340" width="3" height="140"/><rect x="198" y="310" width="3" height="170"/><rect x="400" y="322" width="3" height="160"/>
+  </g>
+
+  <!-- Burj Khalifa -->
+  <path fill="url(#burj)" d="M300 18l2.5 70 3 60 4 58 5 52 5 44 6 40 6 34 7 34 7 30h-78l7-30 7-34 6-34 6-40 5-44 5-52 4-58 3-60z"/>
+  <g stroke="#e9d6bf" stroke-opacity=".45" stroke-width="1.5">
+    <path d="M296 150h8M293 206h14M289 258h22M284 302h32M279 342h42M274 376h52M268 410h64M262 440h76"/>
+  </g>
+
+  <!-- ground -->
+  <path fill="#c79a67" d="M0 492c90-10 190-6 300-2s210 6 300-4v214H0z"/>
+  <path fill="url(#sand)" d="M0 548c120-38 250-40 360-18 90 18 170 14 240-6v176H0z"/>
+  <g fill="#6d7a45">
+    <ellipse cx="70" cy="520" rx="48" ry="16"/><ellipse cx="200" cy="512" rx="40" ry="12"/>
+    <ellipse cx="420" cy="516" rx="54" ry="15"/><ellipse cx="540" cy="522" rx="60" ry="18"/>
+  </g>
+  <g fill="#556239">
+    <ellipse cx="110" cy="528" rx="30" ry="10"/><ellipse cx="470" cy="527" rx="34" ry="10"/>
+  </g>
+
+  <!-- palms -->
+  <g>
+    <path d="M548 700c-6-90-2-170 22-250" stroke="#5c4631" stroke-width="12" fill="none" stroke-linecap="round"/>
+    <g fill="#3f5b33">
+      <path d="M570 452c-40-10-80 0-110 30 36-8 72-12 110-30z"/>
+      <path d="M570 452c-30-30-70-44-112-38 34 12 70 22 112 38z"/>
+      <path d="M570 452c-6-40-26-70-60-90 18 30 34 58 60 90z"/>
+      <path d="M570 452c20-38 50-60 90-66-26 22-52 42-90 66z"/>
+      <path d="M570 452c40-6 76 6 104 34-38-8-70-18-104-34z"/>
+      <path d="M570 452c34 22 54 52 58 92-22-30-40-60-58-92z"/>
+    </g>
+    <path d="M40 700c4-60 0-110-14-160" stroke="#5c4631" stroke-width="9" fill="none" stroke-linecap="round"/>
+    <g fill="#48653a">
+      <path d="M26 540c26-10 56-4 78 16-26-2-52-6-78-16z"/>
+      <path d="M26 540c-22-14-48-16-74-4 26 4 50 6 74 4z"/>
+      <path d="M26 540c6-28 22-48 48-58-14 20-30 38-48 58z"/>
+      <path d="M26 540c-14-24-34-38-62-40 22 12 42 24 62 40z"/>
+    </g>
+  </g>
+</svg>

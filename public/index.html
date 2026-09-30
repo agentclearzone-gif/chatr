@@ -3,49 +3,72 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#e91e63">
-<title>ArabianTalk</title>
+<meta name="theme-color" content="{{themeColor}}">
+<meta name="application-name" content="{{siteTitle}}">
+<title>{{siteTitle}}</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&family=Poppins:wght@500;600&display=swap" rel="stylesheet">
 <link rel="preconnect" href="https://flagcdn.com">
 <link rel="stylesheet" href="/app.css">
+<style id="themeVars">{{themeVars}}</style>
 </head>
 <body>
 
 <!-- ============ Login ============ -->
-<section id="login" class="login">
+<!-- {{…}} placeholders are filled by the server from the admin Appearance settings -->
+<section id="login" class="login {{patternClass}}">
   <form id="loginForm" class="card" autocomplete="off" novalidate>
-    <div class="brand"><span class="logo">💬</span> ArabianTalk</div>
-    <p class="tag">Free anonymous chat. Your chats are deleted as soon as you or the other person leaves. Moderators may review live chats to keep everyone safe.</p>
+    <div class="hero {{heroClass}}" id="heroImg" style="background-image:url('{{heroUrl}}')" aria-hidden="true"></div>
+    <svg class="hero-edge {{heroClass}}" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"><path d="M18 0C34 4 36 30 52 48S80 66 100 76"/></svg>
+    <svg class="card-swoosh" viewBox="0 0 200 60" preserveAspectRatio="none" aria-hidden="true"><path d="M0 58C70 56 150 40 200 2"/></svg>
+
+    <div class="brand-block">
+      <div class="logo" id="logoBox">{{logoHtml}}</div>
+      <div class="wordmark">
+        <div class="brand-name"><span id="brandMain">{{brandMain}}</span><span class="accent" id="brandAccent">{{brandAccent}}</span></div>
+        <div class="tagline" id="tagline">{{tagline}}</div>
+      </div>
+    </div>
+    <p class="tag" id="siteDesc">{{description}}</p>
     <div id="loginNotice" class="notice" hidden></div>
 
-    <label>Username
-      <input id="fName" maxlength="16" placeholder="e.g. Sarah20" required>
-    </label>
+    <div class="frow">
+      <span class="ibadge" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4.5 20.5c0-4 3.4-6.5 7.5-6.5s7.5 2.5 7.5 6.5"/></svg></span>
+      <label class="ctl float"><span>Username</span><input id="fName" maxlength="16" placeholder="e.g. Sarah20" required></label>
+    </div>
 
     <div class="field">
       <span class="lbl">Gender</span>
-      <div class="seg" role="radiogroup">
-        <label><input type="radio" name="g" value="f"><span>♀ Female</span></label>
-        <label><input type="radio" name="g" value="m"><span>♂ Male</span></label>
+      <div class="seg" role="radiogroup" aria-label="Gender">
+        <label><input type="radio" name="g" value="f"><span><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="9" r="5"/><path d="M12 14v7M9 18h6"/></svg>Female</span></label>
+        <label><input type="radio" name="g" value="m"><span><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10" cy="14" r="5.5"/><path d="M14 10l6-6M15 4h5v5"/></svg>Male</span></label>
       </div>
     </div>
 
-    <label class="age">Age
-      <input id="fAge" type="number" inputmode="numeric" min="18" max="99" placeholder="18+">
-    </label>
-
-    <label>Country
-      <div class="country">
-        <img id="fFlag" class="flag" alt="" width="32" height="24">
-        <select id="fCountry"></select>
+    <div class="field">
+      <label class="lbl" for="fAge">Age</label>
+      <div class="frow">
+        <span class="ibadge" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="15.5" rx="3"/><path d="M8 3v4M16 3v4M3.5 10h17"/><path class="dots" d="M8 14h.01M12 14h.01M16 14h.01M8 17h.01M12 17h.01"/></svg></span>
+        <div class="ctl select"><select id="fAge"><option value="">18+</option></select></div>
       </div>
-    </label>
+    </div>
 
-    <label id="stateField">State / Region
-      <select id="fState" disabled><option value="">Select a country first</option></select>
-    </label>
+    <div class="field">
+      <label class="lbl" for="fCountry">Country</label>
+      <div class="frow">
+        <span class="ibadge" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3.3 3 14.7 0 18M12 3c-3 3.3-3 14.7 0 18"/></svg></span>
+        <div class="ctl select country"><img id="fFlag" class="flag" alt="" width="36" height="24"><select id="fCountry"></select></div>
+      </div>
+    </div>
+
+    <div class="field" id="stateField">
+      <label class="lbl" for="fState">State / Region</label>
+      <div class="frow">
+        <span class="ibadge" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 21s-7-6.2-7-11.5a7 7 0 0 1 14 0C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></svg></span>
+        <div class="ctl select"><select id="fState" disabled><option value="">Select a country first</option></select></div>
+      </div>
+    </div>
     <span class="geo-hint" id="geoHint" hidden></span>
 
     <!-- honeypot: invisible to people, bots fill it in -->
@@ -53,7 +76,11 @@
     <div id="capBox" class="cap-box" hidden></div>
     <div id="capStatus" class="cap-status" hidden></div>
     <div id="loginErr" class="err" role="alert"></div>
-    <button id="loginBtn" class="btn" type="submit">Start chatting</button>
+    <button id="loginBtn" class="btn" type="submit">
+      <svg class="bi" viewBox="0 0 24 24" aria-hidden="true"><path d="M20.5 12a8.5 8.5 0 0 1-12.6 7.4L3.5 20.5l1.1-4.2A8.5 8.5 0 1 1 20.5 12z"/><path class="dots" d="M8.5 12h.01M12 12h.01M15.5 12h.01"/></svg>
+      <span id="loginBtnText">{{buttonText}}</span>
+      <svg class="bi" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+    </button>
     <p class="fine">By entering you confirm you are 18+.</p>
   </form>
   <!-- required by DB-IP's free license (CC BY 4.0): credit + link where location results are used -->

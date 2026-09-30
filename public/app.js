@@ -39,6 +39,10 @@
   const MAX_ROOM = 250, MAX_PM = 300;
 
   // ---------------- login ----------------
+  const SITE = () => document.querySelector('meta[name=application-name]').content || document.title;
+  let btnText = $('loginBtnText').textContent;       // set by the admin (Appearance → button text)
+  const setBtn = t => { $('loginBtnText').textContent = t || btnText; };
+  $('fAge').insertAdjacentHTML('beforeend', Array.from({ length: 82 }, (_, i) => `<option>${i + 18}</option>`).join(''));
   const sel = $('fCountry');
   const opts = COUNTRY_CODES.map(cc => [cc, countryName(cc)]).sort((a, b) => a[1].localeCompare(b[1]));
   sel.innerHTML = '<option value="">Select country…</option>' + opts.map(([cc, n]) => `<option value="${cc}">${esc(n)}</option>`).join('');
@@ -92,8 +96,9 @@
     if (!detected || sel.value !== detected.cc) { h.hidden = true; return; }
     const place = [detected.state, countryName(detected.cc)].filter(Boolean).join(', ');
     const differs = detected.state && stateSel.value && stateSel.value !== detected.state;
-    h.innerHTML = `<img src="${flagUrl(detected.cc)}" alt="" width="20" height="15"> ` +
-      `${detected.locked ? 'Detected from your connection' : 'Detected from your IP'}: <b>${esc(place)}</b>` +
+    h.innerHTML = `<img src="${flagUrl(detected.cc)}" alt="" width="30" height="20">` +
+      '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l7 3v6c0 4.5-3 7.6-7 9-4-1.4-7-4.5-7-9V6z" fill="currentColor" stroke="none"/><path d="M9 12l2 2 4-4" stroke="#fff" stroke-width="2.2"/></svg>' +
+      `<span>${detected.locked ? 'Detected from your connection' : 'Detected from your IP'}:</span> <b>${esc(place)}</b>` +
       (differs ? ' <span class="muted">· you changed the state</span>' : !detected.state ? ' <span class="muted">· please pick your state</span>' : '');
     h.hidden = false;
   }
@@ -115,7 +120,7 @@
   function capStatus(state) {
     const el = $('capStatus');
     el.dataset.state = state;
-    el.textContent = { checking: '🛡️ Checking you\u2019re human…', ok: '✓ Verified human', error: '⚠ Bot check could not load. Please reload the page.', off: '' }[state];
+    el.textContent = { checking: 'Checking you\u2019re human…', ok: '✓ Verified human', error: '⚠ Bot check could not load. Please reload the page.', off: '' }[state];
     el.hidden = state === 'off';
   }
   function prepareCaptcha() {
@@ -181,10 +186,10 @@
     if (err) return;
     store.set('chatr.profile', profile);
     $('loginBtn').disabled = true;
-    $('loginBtn').textContent = 'Verifying…';
+    setBtn('Verifying…');
     let cap;
     try { cap = await getCaptcha(); } catch {
-      $('loginBtn').disabled = false; $('loginBtn').textContent = 'Start chatting';
+      $('loginBtn').disabled = false; setBtn();
       $('loginErr').textContent = 'Bot check could not load. Please reload the page.';
       return;
     }
@@ -194,7 +199,7 @@
   // ---------------- socket ----------------
   function connect(profile, cap, attempt) {
     $('loginBtn').disabled = true;
-    $('loginBtn').textContent = 'Connecting…';
+    setBtn('Connecting…');
     const ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws');
     S.ws = ws;
     let joined = false;
@@ -213,7 +218,7 @@
           prepareCaptcha(); // that answer is used up
           if (attempt === 0) { // e.g. it expired: solve a fresh one and retry once, invisibly
             S.ws = null; ws.close();
-            getCaptcha().then(c => connect(profile, c, 1), () => { $('loginBtn').disabled = false; $('loginBtn').textContent = 'Start chatting'; $('loginErr').textContent = m.e; });
+            getCaptcha().then(c => connect(profile, c, 1), () => { $('loginBtn').disabled = false; setBtn(); $('loginErr').textContent = m.e; });
             return;
           }
         }
@@ -226,7 +231,7 @@
       if (S.ws !== ws) return;
       S.ws = null;
       $('loginBtn').disabled = false;
-      $('loginBtn').textContent = 'Start chatting';
+      setBtn();
       if (joined) resetToLogin(S.closeReason || 'You were disconnected. Your chat history has been deleted.');
       else if (!$('loginErr').textContent) $('loginErr').textContent = 'Could not connect. Please try again.';
     };
@@ -264,7 +269,7 @@
   $('logoutBtn').onclick = () => {
     const ws = S.ws; S.ws = null;
     if (ws) ws.close();
-    $('loginBtn').disabled = false; $('loginBtn').textContent = 'Start chatting';
+    $('loginBtn').disabled = false; setBtn();
     resetToLogin('You left the chat. All messages were deleted.');
   };
 
@@ -723,11 +728,30 @@
   function updateTitle() {
     let n = 0;
     for (const c of S.convos.values()) n += c.unread;
-    document.title = n ? `(${n}) ArabianTalk` : 'ArabianTalk';
+    document.title = n ? `(${n}) ${SITE()}` : SITE();
   }
   document.addEventListener('visibilitychange', () => {
     if (!document.hidden && S.me) { const c = convo(S.active); if (c.unread) { c.unread = 0; updateBadges(S.active); } }
   });
+
+  // ---------------- live theme preview (Admin → Appearance shows this page in an iframe) ----------------
+  if (window.parent !== window) {
+    window.addEventListener('message', e => {
+      if (e.origin !== location.origin || !e.data || e.data.type !== 'theme-preview') return;
+      const t = e.data.theme;
+      $('themeVars').textContent = e.data.css;
+      $('brandMain').textContent = t.brandMain;
+      $('brandAccent').textContent = t.brandAccent;
+      $('tagline').textContent = t.tagline;
+      $('siteDesc').textContent = t.description;
+      btnText = t.buttonText; setBtn();
+      $('heroImg').style.backgroundImage = `url("${e.data.heroUrl}")`;
+      for (const el of [$('heroImg'), document.querySelector('.hero-edge')]) el.classList.toggle('off', !t.showHero);
+      $('heroImg').classList.toggle('default', !!e.data.heroIsDefault);
+      $('login').classList.toggle('pattern', t.showPattern);
+      if (e.data.logoHtml != null) $('logoBox').innerHTML = e.data.logoHtml;
+    });
+  }
 
   let toastTimer;
   function toast(text) {

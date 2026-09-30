@@ -72,7 +72,7 @@
   });
   $('logout').onclick = async () => { try { await api('/logout', { method: 'POST' }); } catch {} showLogin(); };
 
-  const VIEWS = ['overview', 'convos', 'room', 'users', 'filter', 'spam', 'bans'];
+  const VIEWS = ['overview', 'convos', 'room', 'users', 'filter', 'appearance', 'spam', 'bans'];
   let view = 'overview';
   function route() {
     const v = location.hash.slice(1).split('?')[0];
@@ -97,6 +97,7 @@
       else if (view === 'room') await loadRoom();
       else if (view === 'users') await loadUsers();
       else if (view === 'filter') await loadFilter(entering);
+      else if (view === 'appearance') { if (entering) await loadAppearance(); }
       else if (view === 'spam') await loadSpam(entering);
       else if (view === 'bans') await loadBans();
     } catch (e) { if (e.message !== 'Signed out') console.warn(e); }
@@ -461,6 +462,144 @@
     } catch (err) { $('testOut').textContent = err.message; }
   }
   $('testText').addEventListener('input', () => { clearTimeout(testT); testT = setTimeout(runTest, 200); });
+
+  // ================= Appearance =================
+  const THEME_COLORS = [
+    ['primary', 'Main color', 'buttons & accents'], ['primary2', 'Main color, dark', 'gradients & shadows'],
+    ['bg', 'Page background', ''], ['card', 'Card background', ''], ['text', 'Text', ''], ['muted', 'Secondary text', ''],
+  ];
+  const TEXT_KEYS = ['brandMain', 'brandAccent', 'tagline', 'description', 'buttonText'];
+  let themeInfo = null, draft = null, formBuilt = false;
+
+  async function loadAppearance() {
+    themeInfo = await api('/theme');
+    draft = { ...themeInfo.theme };
+    if (!formBuilt) buildAppearanceForm();
+    fillAppearanceForm();
+    const frame = $('themeFrame');
+    if (frame.src === 'about:blank' || !frame.src.startsWith(location.origin)) frame.src = '/';
+    else pushPreview();
+  }
+
+  function buildAppearanceForm() {
+    formBuilt = true;
+    $('presets').innerHTML = Object.entries(themeInfo.presets).map(([k, p]) =>
+      `<button type="button" class="preset" data-preset="${k}"><i style="background:linear-gradient(135deg,${p.primary},${p.primary2})"></i>${esc(p.label)}</button>`).join('');
+    $('colorFields').innerHTML = THEME_COLORS.map(([k, label, hint]) => `<div class="color-row">
+        <input type="color" data-c="${k}" aria-label="${label}">
+        <span class="cl">${label}${hint ? `<br><span class="muted">${hint}</span>` : ''}</span>
+        <input class="hex" data-hex="${k}" maxlength="7" spellcheck="false"></div>`).join('');
+    $('presets').addEventListener('click', e => {
+      const b = e.target.closest('[data-preset]'); if (!b) return;
+      const { label, ...colors } = themeInfo.presets[b.dataset.preset];
+      Object.assign(draft, colors, { preset: b.dataset.preset });
+      fillAppearanceForm(); pushPreview();
+    });
+    $('v-appearance').addEventListener('input', e => {
+      const t = e.target;
+      if (t.dataset.c) { draft[t.dataset.c] = t.value; draft.preset = 'custom'; }
+      else if (t.dataset.hex) {
+        if (!/^#[0-9a-f]{6}$/i.test(t.value)) return;
+        draft[t.dataset.hex] = t.value.toLowerCase(); draft.preset = 'custom';
+      } else if (t.dataset.t) draft[t.dataset.t] = t.type === 'checkbox' ? t.checked : t.value;
+      else return;
+      fillAppearanceForm(t); pushPreview();
+    });
+    $('v-appearance').addEventListener('change', async e => {
+      const inp = e.target.closest('input[type=file][data-slot]'); if (!inp || !inp.files[0]) return;
+      const slot = inp.dataset.slot, file = inp.files[0];
+      inp.value = '';
+      try {
+        const data = await shrinkImage(file, slot === 'hero' ? 1600 : 512, slot === 'hero' ? 'image/jpeg' : 'image/png');
+        themeInfo = await api('/theme/image', { method: 'POST', body: { slot, data } });
+        draft[slot + 'Image'] = themeInfo.theme[slot + 'Image'];
+        toast(slot === 'hero' ? 'Corner picture uploaded' : 'Logo uploaded');
+        fillAppearanceForm(); pushPreview();
+      } catch (err) { toast(err.message); }
+    });
+    $('v-appearance').addEventListener('click', async e => {
+      const r = e.target.closest('[data-reset-img]'); if (!r) return;
+      const slot = r.dataset.resetImg;
+      try {
+        themeInfo = await api('/theme/image/' + slot, { method: 'DELETE' });
+        draft[slot + 'Image'] = null;
+        toast('Back to the default ' + (slot === 'hero' ? 'skyline' : 'logo'));
+        fillAppearanceForm(); pushPreview();
+      } catch (err) { toast(err.message); }
+    });
+    $('themeSave').onclick = async () => {
+      const body = { preset: draft.preset };
+      for (const [k] of THEME_COLORS) body[k] = draft[k];
+      for (const k of TEXT_KEYS) body[k] = draft[k];
+      body.showHero = draft.showHero; body.showPattern = draft.showPattern;
+      try {
+        themeInfo = await api('/theme', { method: 'PUT', body });
+        draft = { ...themeInfo.theme };
+        fillAppearanceForm(); toast('Saved — visitors now see the new look');
+      } catch (err) { toast(err.message); }
+    };
+    $('themeDiscard').onclick = () => { draft = { ...themeInfo.theme }; fillAppearanceForm(); pushPreview(); };
+    $('themeFrame').addEventListener('load', pushPreview);
+  }
+
+  function fillAppearanceForm(except) {
+    for (const [k] of THEME_COLORS) {
+      const c = document.querySelector(`[data-c="${k}"]`), h = document.querySelector(`[data-hex="${k}"]`);
+      if (c !== except) c.value = draft[k];
+      if (h !== except) h.value = draft[k];
+    }
+    for (const el of $('v-appearance').querySelectorAll('[data-t]')) {
+      if (el === except) continue;
+      if (el.type === 'checkbox') el.checked = !!draft[el.dataset.t]; else el.value = draft[el.dataset.t] ?? '';
+    }
+    for (const b of $('presets').children) b.classList.toggle('on', b.dataset.preset === draft.preset);
+    $('presetNote').textContent = draft.preset === 'custom' ? 'Custom colors' : '';
+    const assets = themeAssets();
+    $('heroThumb').style.backgroundImage = `url("${assets.heroUrl}")`;
+    $('logoThumb').innerHTML = assets.logoHtml;
+    $('logoThumb').style.setProperty('--primary', draft.primary); $('logoThumb').style.setProperty('--primary-2', draft.primary2);
+    $('heroReset').hidden = !draft.heroImage; $('logoReset').hidden = !draft.logoImage;
+    // white button text must stay readable on the main color
+    const ratio = contrast('#ffffff', draft.primary);
+    $('contrastWarn').hidden = ratio >= 3;
+    $('contrastWarn').textContent = `The main color is too light for white button text (contrast ${ratio.toFixed(1)}:1, needs 3:1). Pick a darker main color.`;
+    const dirty = JSON.stringify(pick(draft)) !== JSON.stringify(pick(themeInfo.theme));
+    $('dirtyNote').textContent = dirty ? 'Unsaved changes' : 'All changes saved';
+    $('themeSave').disabled = !dirty;
+  }
+  const pick = t => { const o = {}; for (const [k] of THEME_COLORS) o[k] = t[k]; for (const k of TEXT_KEYS) o[k] = t[k]; o.showHero = t.showHero; o.showPattern = t.showPattern; return o; };
+
+  function themeAssets() {
+    const t = themeInfo.theme; // images are saved immediately, so the stored theme is the truth
+    return {
+      heroUrl: t.heroImage ? `/media/hero?v=${t.heroImage.v}` : themeInfo.heroDefault,
+      logoHtml: t.logoImage ? `<img src="/media/logo?v=${t.logoImage.v}" alt="">` : themeInfo.defaultLogo,
+      heroIsDefault: !t.heroImage,
+    };
+  }
+  function pushPreview() {
+    const frame = $('themeFrame');
+    if (!draft || !frame.contentWindow || !frame.src.startsWith(location.origin)) return;
+    const css = `:root{--primary:${draft.primary};--primary-2:${draft.primary2};--bg:${draft.bg};--card:${draft.card};--text:${draft.text};--muted:${draft.muted}}`;
+    frame.contentWindow.postMessage({ type: 'theme-preview', theme: draft, css, ...themeAssets() }, location.origin);
+  }
+
+  function luminance(hex) {
+    const v = [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16) / 255).map(c => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4));
+    return 0.2126 * v[0] + 0.7152 * v[1] + 0.0722 * v[2];
+  }
+  function contrast(a, b) { const [x, y] = [luminance(a), luminance(b)].sort((p, q) => q - p); return (x + 0.05) / (y + 0.05); }
+
+  // Resize big images in the browser before uploading (keeps uploads fast and under the 4 MB limit).
+  async function shrinkImage(file, max, type) {
+    if (!/^image\/(png|jpeg|webp)$/.test(file.type)) throw new Error('Please choose a PNG, JPEG or WebP image');
+    const bmp = await createImageBitmap(file);
+    const scale = Math.min(1, max / Math.max(bmp.width, bmp.height));
+    const cv = document.createElement('canvas');
+    cv.width = Math.round(bmp.width * scale); cv.height = Math.round(bmp.height * scale);
+    cv.getContext('2d').drawImage(bmp, 0, 0, cv.width, cv.height);
+    return cv.toDataURL(type, 0.86);
+  }
 
   // ================= Anti-spam =================
   const SPAM_LABELS = [

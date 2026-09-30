@@ -65,9 +65,36 @@ for (const [name, buf] of raw) {
   }
   files.set('/' + name, { body, gz: zlib.gzipSync(body), etag: `"${hashOf(body)}"`, type: TYPES[path.extname(name)] || 'application/octet-stream' });
 }
-files.set('/', files.get('/index.html'));
 files.set('/admin', files.get('/admin.html'));
 files.set('/admin/', files.get('/admin.html'));
+
+// ---------- the login page is rendered from the admin's Appearance settings ----------
+const Theme = require('./theme.js');
+const theme = new Theme(DATA_DIR);
+const INDEX_TEMPLATE = files.get('/index.html').body.toString('utf8');
+const HERO_DEFAULT = `/hero-dubai.svg?v=${hashOf(raw.get('hero-dubai.svg'))}`;
+const escHtml = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+function themeAssets(t) {
+  return {
+    heroUrl: t.heroImage ? `/media/hero?v=${t.heroImage.v}` : HERO_DEFAULT,
+    logoHtml: t.logoImage ? `<img src="/media/logo?v=${t.logoImage.v}" alt="">` : Theme.DEFAULT_LOGO,
+  };
+}
+function renderIndex() {
+  const t = theme.all();
+  const { heroUrl, logoHtml } = themeAssets(t);
+  const values = {
+    themeVars: Theme.cssVars(t), themeColor: t.primary, siteTitle: escHtml(t.brandMain + t.brandAccent),
+    brandMain: escHtml(t.brandMain), brandAccent: escHtml(t.brandAccent), tagline: escHtml(t.tagline),
+    description: escHtml(t.description), buttonText: escHtml(t.buttonText),
+    heroUrl: escHtml(heroUrl), heroClass: !t.showHero ? 'off' : t.heroImage ? '' : 'default', patternClass: t.showPattern ? 'pattern' : '', logoHtml,
+  };
+  const body = Buffer.from(INDEX_TEMPLATE.replace(/\{\{(\w+)\}\}/g, (m, k) => (k in values ? values[k] : m)));
+  const f = { body, gz: zlib.gzipSync(body), etag: `"${hashOf(body)}"`, type: TYPES['.html'] };
+  files.set('/', f);
+  files.set('/index.html', f);
+}
+renderIndex();
 
 // ---------- bans (persisted) ----------
 class Bans {
@@ -145,6 +172,8 @@ const geo = new Geo({ dataDir: process.env.GEO_DIR || path.join(__dirname, 'data
 
 const adminApi = createAdminApi({
   users, convos, roomLog, stats, filter, bans, settings, captcha, clientIp, dataDir: DATA_DIR,
+  theme, themeInfo: () => ({ theme: theme.all(), presets: Theme.PRESETS, defaultLogo: Theme.DEFAULT_LOGO, heroDefault: HERO_DEFAULT, ...themeAssets(theme.all()) }),
+  onThemeChange: renderIndex,
   kick(u, reason) {
     stats.kicks++;
     kickUser(u, reason ? `You were removed by a moderator: ${reason}` : 'You were removed by a moderator.');
@@ -178,6 +207,18 @@ const server = http.createServer((req, res) => {
     });
     return;
   }
+  const media = url.pathname.match(/^\/media\/(hero|logo)$/);
+  if (media) {
+    // images uploaded in Admin → Appearance
+    const file = theme.imagePath(media[1] + 'Image');
+    if (!file) { res.writeHead(404); return res.end('Not found'); }
+    const ext = path.extname(file).slice(1);
+    res.writeHead(200, {
+      'content-type': ext === 'jpg' ? 'image/jpeg' : `image/${ext}`, 'x-content-type-options': 'nosniff',
+      'cache-control': url.searchParams.has('v') ? 'public, max-age=31536000, immutable' : 'no-cache',
+    });
+    return fs.createReadStream(file).pipe(res);
+  }
   if (url.pathname === '/states') {
     const cc = (url.searchParams.get('cc') || '').toLowerCase();
     if (!COUNTRY_CODES.has(cc)) { res.writeHead(400); return res.end('Unknown country'); }
@@ -207,7 +248,7 @@ const server = http.createServer((req, res) => {
     etag: f.etag,
     vary: 'accept-encoding',
     'x-content-type-options': 'nosniff',
-    ...(isHtml ? { 'x-frame-options': 'DENY', 'referrer-policy': 'same-origin' } : {}),
+    ...(isHtml ? { 'x-frame-options': 'SAMEORIGIN', 'referrer-policy': 'same-origin' } : {}), // same-origin only: the admin preview frames the login page
     ...(gzip ? { 'content-encoding': 'gzip' } : {}),
   });
   res.end(gzip ? f.gz : f.body);
