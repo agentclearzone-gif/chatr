@@ -1,7 +1,7 @@
 {
-  "name": "chatr",
+  "name": "arabiantalk",
   "version": "1.0.0",
-  "description": "Ultra-fast in-memory chatroom",
+  "description": "ArabianTalk: ultra-fast in-memory chatroom",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",

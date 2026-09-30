@@ -723,7 +723,7 @@
   function updateTitle() {
     let n = 0;
     for (const c of S.convos.values()) n += c.unread;
-    document.title = n ? `(${n}) Chatr` : 'Chatr';
+    document.title = n ? `(${n}) ArabianTalk` : 'ArabianTalk';
   }
   document.addEventListener('visibilitychange', () => {
     if (!document.hidden && S.me) { const c = convo(S.active); if (c.unread) { c.unread = 0; updateBadges(S.active); } }

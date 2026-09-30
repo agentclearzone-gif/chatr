@@ -1,4 +1,4 @@
-# Chatr
+# ArabianTalk
 
 A fast, responsive, anonymous chatroom. It has a main room, private one-to-one chats and picture sharing. The user list shows gender, age, location and a country flag. The admin panel at `/admin` has a word filter, live conversation review and stats by country. Chat history is never written to disk. When a user disconnects, every conversation with them is deleted, including the copy moderators can see.
 

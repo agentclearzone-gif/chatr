@@ -2,7 +2,7 @@
 # In the Render dashboard: New → Blueprint → pick this repository.
 services:
   - type: web
-    name: chatr
+    name: arabiantalk          # becomes https://arabiantalk.onrender.com (Render adds a suffix if taken)
     runtime: node
     plan: free                 # upgrade to "starter" + a disk (below) to keep admin settings across restarts
     region: frankfurt          # closest Render region to the Gulf; use "virginia" if most users are in the US. Can't be changed later.
@@ -16,7 +16,7 @@ services:
         sync: false
     # On a paid plan, uncomment to keep the word filter, bans and anti-spam settings across restarts:
     # disk:
-    #   name: chatr-data
+    #   name: arabiantalk-data
     #   mountPath: /var/data
     #   sizeGB: 1
     # and add the env var DATA_DIR=/var/data
