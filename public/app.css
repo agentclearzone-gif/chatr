@@ -26,7 +26,7 @@ input, select { font: inherit; color: inherit; }
 [hidden] { display: none !important; }
 
 /* ---------- Login ---------- */
-.login { height: 100%; overflow: auto; display: grid; place-items: center; padding: 24px 16px;
+.login { height: 100%; overflow: auto; display: grid; place-items: center; grid-template-rows: 1fr auto; padding: 24px 16px 10px;
   background: radial-gradient(1200px 600px at 10% -10%, #ffd3e1 0, transparent 60%),
               radial-gradient(900px 500px at 110% 110%, #d6ebff 0, transparent 60%), var(--bg); }
 .card { width: 100%; max-width: 420px; background: var(--panel); border-radius: 20px; padding: 28px;
@@ -66,7 +66,8 @@ input, select { font: inherit; color: inherit; }
 .geo-hint { margin-top: -6px; flex-wrap: wrap; }
 .geo-hint img { border-radius: 2px; box-shadow: 0 0 0 1px rgba(0,0,0,.08); }
 .card select:disabled { opacity: 1; background: #f3f4f6; cursor: not-allowed; }
-.fine a { color: inherit; }
+.credit { font-size: 10.5px; color: #c9cdd5; text-decoration: none; margin-top: 18px; }
+.credit:hover { color: #9ca3af; }
 .fine { margin: 0; text-align: center; color: #9ca3af; font-size: 12px; }
 
 /* ---------- App shell ---------- */
