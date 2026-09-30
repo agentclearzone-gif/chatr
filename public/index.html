@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#e91e63">
+<title>Chatr</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&display=swap" rel="stylesheet">
+<link rel="preconnect" href="https://flagcdn.com">
+<link rel="stylesheet" href="/app.css">
+</head>
+<body>
+
+<!-- ============ Login ============ -->
+<section id="login" class="login">
+  <form id="loginForm" class="card" autocomplete="off" novalidate>
+    <div class="brand"><span class="logo">💬</span> Chatr</div>
+    <p class="tag">Free anonymous chat. Your chats are deleted as soon as you or the other person leaves. Moderators may review live chats to keep everyone safe.</p>
+    <div id="loginNotice" class="notice" hidden></div>
+
+    <label>Username
+      <input id="fName" maxlength="16" placeholder="e.g. Sarah20" required>
+    </label>
+
+    <div class="field">
+      <span class="lbl">Gender</span>
+      <div class="seg" role="radiogroup">
+        <label><input type="radio" name="g" value="f"><span>♀ Female</span></label>
+        <label><input type="radio" name="g" value="m"><span>♂ Male</span></label>
+      </div>
+    </div>
+
+    <label class="age">Age
+      <input id="fAge" type="number" inputmode="numeric" min="18" max="99" placeholder="18+">
+    </label>
+
+    <label>Country
+      <div class="country">
+        <img id="fFlag" class="flag" alt="" width="32" height="24">
+        <select id="fCountry"></select>
+      </div>
+    </label>
+
+    <label id="stateField">State / Region
+      <select id="fState" disabled><option value="">Select a country first</option></select>
+    </label>
+    <span class="geo-hint" id="geoHint" hidden></span>
+
+    <!-- honeypot: invisible to people, bots fill it in -->
+    <div class="hp" aria-hidden="true"><label>Website <input id="fWebsite" name="website" tabindex="-1" autocomplete="off"></label></div>
+    <div id="capBox" class="cap-box" hidden></div>
+    <div id="capStatus" class="cap-status" hidden></div>
+    <div id="loginErr" class="err" role="alert"></div>
+    <button id="loginBtn" class="btn" type="submit">Start chatting</button>
+    <p class="fine">By entering you confirm you are 18+.<br><a href="https://db-ip.com" target="_blank" rel="noopener">IP Geolocation by DB-IP</a></p>
+  </form>
+</section>
+
+<!-- ============ App ============ -->
+<main id="app" class="app" hidden>
+  <aside class="side">
+    <header class="side-head">
+      <div class="me" id="meBox"></div>
+      <button class="icon-btn" id="soundBtn" aria-label="Message sound on" title="Message sound on">🔔</button>
+      <button class="leave-btn" id="logoutBtn" title="Leave chat and delete all messages">Leave</button>
+    </header>
+    <div class="side-tools">
+      <input id="search" type="search" placeholder="Search name or location">
+      <div class="tabs" id="tabs">
+        <button data-f="all" class="on">All <b id="cAll">0</b></button>
+        <button data-f="f">Female <b id="cF">0</b></button>
+        <button data-f="m">Male <b id="cM">0</b></button>
+      </div>
+    </div>
+    <div class="room-row" id="roomRow">
+      <div class="av room">#</div>
+      <div class="info"><div class="nm">Main Room</div><div class="sub" id="roomSub">Everyone online</div></div>
+      <span class="badge" id="roomBadge" hidden></span>
+    </div>
+    <div class="list" id="list"><div class="spacer" id="spacer"></div></div>
+  </aside>
+
+  <section class="chat" id="chat">
+    <header class="chat-head">
+      <button class="icon-btn back" id="backBtn" aria-label="Back">‹</button>
+      <div class="peer" id="peer"></div>
+      <div class="head-actions" id="headActions">
+        <button class="icon-btn" id="blockBtn" title="Block user" aria-label="Block user">⛔</button>
+        <button class="icon-btn" id="closeBtn" title="Close chat &amp; delete history" aria-label="Close chat">✕</button>
+      </div>
+    </header>
+    <div class="msgs" id="msgs"></div>
+    <div class="typing" id="typing" hidden><span></span><span></span><span></span></div>
+    <div class="live-note" id="liveNote" hidden></div>
+    <form class="composer" id="composer" autocomplete="off">
+      <button type="button" class="icon-btn" id="emojiBtn" aria-label="Emoji">😊</button>
+      <button type="button" class="icon-btn" id="picBtn" aria-label="Send picture" title="Send picture">📷</button>
+      <input type="file" id="picInput" accept="image/*" hidden>
+      <input id="text" maxlength="500" placeholder="Type a message…" enterkeyhint="send">
+      <button class="send" id="sendBtn" aria-label="Send">➤</button>
+      <div class="emoji-pop" id="emojiPop" hidden></div>
+    </form>
+  </section>
+</main>
+
+<div class="lightbox" id="lightbox" hidden><img alt=""></div>
+<div class="toast" id="toast" hidden></div>
+
+<script src="/countries.js"></script>
+<script src="/app.js"></script>
+</body>
+</html>

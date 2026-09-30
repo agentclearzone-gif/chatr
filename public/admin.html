@@ -1,0 +1,276 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Chatr Admin</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/admin.css">
+</head>
+<body>
+
+<!-- ============ Login ============ -->
+<section id="login" class="login" hidden>
+  <form id="loginForm" class="card">
+    <div class="brand">💬 Chatr <span>Admin</span></div>
+    <label>Password
+      <input id="pw" type="password" autocomplete="current-password" required autofocus>
+    </label>
+    <div class="err" id="loginErr"></div>
+    <button class="btn primary" type="submit">Sign in</button>
+  </form>
+</section>
+
+<!-- ============ Shell ============ -->
+<div id="shell" class="shell" hidden>
+  <nav class="nav" id="nav">
+    <div class="brand">💬 Chatr <span>Admin</span></div>
+    <a href="#overview" data-view="overview">📊 Overview</a>
+    <a href="#convos" data-view="convos">💬 Conversations <b id="navConvos"></b></a>
+    <a href="#room" data-view="room"># Main Room</a>
+    <a href="#users" data-view="users">👥 Users <b id="navUsers"></b></a>
+    <a href="#filter" data-view="filter">🚫 Word filter</a>
+    <a href="#spam" data-view="spam">🛡️ Anti-spam</a>
+    <a href="#bans" data-view="bans">⛔ Bans</a>
+    <div class="nav-foot">
+      <div class="live"><i></i> Live · updates every 4s</div>
+      <button class="btn ghost" id="logout">Sign out</button>
+    </div>
+  </nav>
+
+  <main class="main">
+    <!-- Overview -->
+    <section class="view" id="v-overview">
+      <header class="vh"><h1>Overview</h1><span class="muted" id="uptime"></span></header>
+      <div class="tiles" id="tiles"></div>
+      <div class="panel">
+        <div class="ph"><h2>Online users</h2><span class="muted">Last 24 hours, sampled every 30s</span></div>
+        <div class="chart" id="lineChart"></div>
+      </div>
+      <div class="grid2">
+        <div class="panel">
+          <div class="ph">
+            <h2>Users by country</h2>
+            <div class="legend"><span><i class="sw f"></i>Female</span><span><i class="sw m"></i>Male</span></div>
+          </div>
+          <input class="search" id="ctySearch" type="search" placeholder="Filter countries">
+          <div class="table-wrap">
+            <table class="tbl" id="ctyTable">
+              <thead><tr><th>Country</th><th class="num">Online</th><th>Female / Male</th><th class="num">Avg age</th><th class="num" title="Joins since the server started">Joins</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="stack">
+          <div class="panel">
+            <div class="ph"><h2>Gender</h2></div>
+            <div id="genderBox"></div>
+          </div>
+          <div class="panel">
+            <div class="ph"><h2>Age groups</h2><span class="muted">Online now</span></div>
+            <div class="chart" id="ageChart"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Conversations -->
+    <section class="view" id="v-convos" hidden>
+      <header class="vh"><h1>Conversations</h1><span class="muted">Private chats live in memory and are deleted when either user leaves.</span></header>
+      <div class="split">
+        <div class="panel list-panel">
+          <div class="tools">
+            <input class="search" id="convoSearch" type="search" placeholder="Search by username">
+            <label class="chk"><input type="checkbox" id="flaggedOnly"> Flagged only</label>
+          </div>
+          <div class="chip-row" id="convoUserChip" hidden></div>
+          <div class="convo-list" id="convoList"></div>
+        </div>
+        <div class="panel transcript" id="transcript">
+          <div class="empty">Select a conversation to read it.</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Main room -->
+    <section class="view" id="v-room" hidden>
+      <header class="vh"><h1>Main Room</h1><span class="muted">Last 500 messages from users who are still online</span></header>
+      <div class="panel">
+        <div class="tools">
+          <input class="search" id="roomSearch" type="search" placeholder="Search messages or usernames">
+          <label class="chk"><input type="checkbox" id="roomFlagged"> Filtered only</label>
+        </div>
+        <div class="room-log" id="roomLog"></div>
+      </div>
+    </section>
+
+    <!-- Users -->
+    <section class="view" id="v-users" hidden>
+      <header class="vh"><h1>Users</h1><span class="muted" id="usersCount"></span></header>
+      <div class="panel">
+        <div class="tools">
+          <input class="search" id="userSearch" type="search" placeholder="Search name, location or IP">
+          <select id="userCountry"><option value="">All countries</option></select>
+          <select id="userGender"><option value="">All genders</option><option value="f">Female</option><option value="m">Male</option></select>
+        </div>
+        <div class="table-wrap">
+          <table class="tbl" id="userTable">
+            <thead><tr><th>User</th><th>Location</th><th>IP</th><th class="num">Online for</th><th class="num">Msgs</th><th class="num">Chats</th><th class="num">Strikes</th><th></th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- Word filter -->
+    <section class="view" id="v-filter" hidden>
+      <header class="vh"><h1>Word filter</h1><span class="muted">Applies to main room, private messages, usernames and locations. Changes take effect instantly.</span></header>
+      <div class="grid2 top">
+        <form class="panel" id="filterForm">
+          <div class="ph"><h2>Add words</h2></div>
+          <label class="fld">Words or phrases <span class="muted">(comma or new line separated)</span>
+            <textarea id="fWords" rows="3" placeholder="badword, another phrase"></textarea>
+          </label>
+          <div class="row">
+            <label class="fld">Match
+              <select id="fMatch">
+                <option value="word">Whole word only</option>
+                <option value="contains">Anywhere in text</option>
+              </select>
+            </label>
+            <label class="fld">Action
+              <select id="fAction">
+                <option value="mask">Mask with ****</option>
+                <option value="block">Block the message</option>
+              </select>
+            </label>
+          </div>
+          <div class="err" id="filterErr"></div>
+          <button class="btn primary" type="submit">Add to filter</button>
+        </form>
+        <div class="panel">
+          <div class="ph"><h2>Test the filter</h2></div>
+          <label class="fld">Type a message
+            <input id="testText" placeholder="See what users would see…">
+          </label>
+          <div class="test-out" id="testOut"><span class="muted">Result appears here</span></div>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="ph"><h2>Filtered words <span class="muted" id="ruleCount"></span></h2>
+          <input class="search sm" id="ruleSearch" type="search" placeholder="Search words"></div>
+        <div class="table-wrap">
+          <table class="tbl" id="ruleTable">
+            <thead><tr><th>Word</th><th>Match</th><th>Action</th><th class="num">Hits</th><th>Added</th><th></th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- Anti-spam -->
+    <section class="view" id="v-spam" hidden>
+      <header class="vh"><h1>Anti-spam</h1><span class="muted">Changes apply instantly to everyone online.</span></header>
+      <div class="tiles" id="spamTiles"></div>
+      <div class="grid2 top">
+        <form class="panel" id="spamForm">
+          <div class="ph"><h2>Bot check at login</h2><span id="capMode"></span></div>
+          <label class="chk"><input type="checkbox" name="captcha"> Require a bot check to join</label>
+          <label class="fld" id="powField">Puzzle strength <span class="muted">(built-in check; time to solve on a laptop, phones take 2–4× longer)</span>
+            <select name="powDifficulty">
+              <option value="16">Light (~0.05s)</option>
+              <option value="17">Normal (~0.1s)</option>
+              <option value="18">Strong (~0.2s) — recommended</option>
+              <option value="19">Stronger (~0.4s)</option>
+              <option value="20">Very strong (~0.8s)</option>
+              <option value="21">Under attack (~1.5s)</option>
+              <option value="22">Extreme (~3s)</option>
+            </select>
+          </label>
+          <p class="muted" id="capNote" style="margin:4px 0 8px"></p>
+
+          <div class="ph" style="margin-top:14px"><h2>Chat rules</h2></div>
+          <label class="fld">Links
+            <select name="linkPolicy">
+              <option value="allow">Allow links everywhere</option>
+              <option value="room">Block links in the Main Room (allowed in private chats)</option>
+              <option value="all">Block links everywhere</option>
+            </select>
+          </label>
+          <label class="chk" style="margin:10px 0"><input type="checkbox" name="duplicateCheck"> Block the same message repeated within 60 seconds</label>
+          <label class="chk" style="margin:0 0 10px"><input type="checkbox" name="liveTyping"> Live typing in private chats (users see text as it's typed; each user can turn it off)</label>
+          <div class="row">
+            <label class="fld">New users wait before posting in Main Room (seconds)
+              <input type="number" name="newUserRoomDelay" min="0" max="3600">
+            </label>
+            <label class="fld">Max new private chats per minute
+              <input type="number" name="maxNewChatsPerMin" min="1" max="500">
+            </label>
+          </div>
+
+          <div class="ph" style="margin-top:6px"><h2>Strikes</h2><span class="muted">Each violation is a strike; strikes fade 1 per minute</span></div>
+          <div class="row">
+            <label class="fld">Auto-mute (5 min) at strikes
+              <input type="number" name="muteAt" min="2" max="100">
+            </label>
+            <label class="fld">Auto-kick + 10 min ban at strikes
+              <input type="number" name="kickAt" min="3" max="200">
+            </label>
+          </div>
+          <div class="err" id="spamErr"></div>
+          <button class="btn primary" type="submit">Save settings</button>
+        </form>
+        <div class="panel">
+          <div class="ph"><h2>Blocked since server start</h2></div>
+          <table class="tbl" id="spamStats"><tbody></tbody></table>
+        </div>
+      </div>
+    </section>
+
+    <!-- Bans -->
+    <section class="view" id="v-bans" hidden>
+      <header class="vh"><h1>Bans</h1><span class="muted">Bans apply to the user's IP address and browser.</span></header>
+      <div class="panel">
+        <div class="table-wrap">
+          <table class="tbl" id="banTable">
+            <thead><tr><th>Username</th><th>IP</th><th>Reason</th><th>Banned</th><th>Expires</th><th></th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<dialog id="banDlg" class="dlg">
+  <form method="dialog" id="banForm">
+    <h2 id="banTitle">Ban user</h2>
+    <label class="fld">Duration
+      <select id="banHours">
+        <option value="1">1 hour</option>
+        <option value="24" selected>24 hours</option>
+        <option value="168">7 days</option>
+        <option value="720">30 days</option>
+        <option value="0">Permanent</option>
+      </select>
+    </label>
+    <label class="fld">Reason <span class="muted">(shown to the user)</span>
+      <input id="banReason" maxlength="200" placeholder="e.g. Harassment">
+    </label>
+    <div class="dlg-actions">
+      <button class="btn ghost" value="cancel" type="submit" formnovalidate>Cancel</button>
+      <button class="btn danger" value="ok" type="submit">Ban</button>
+    </div>
+  </form>
+</dialog>
+
+<div class="tip" id="tip" hidden></div>
+<div class="toast" id="toast" hidden></div>
+
+<script src="/countries.js"></script>
+<script src="/admin.js"></script>
+</body>
+</html>

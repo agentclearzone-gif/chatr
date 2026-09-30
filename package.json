@@ -1,0 +1,24 @@
+{
+  "name": "chatr",
+  "version": "1.0.0",
+  "description": "Ultra-fast in-memory chatroom",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "loadtest": "node loadtest.js",
+    "build:states": "node scripts/build-states.js",
+    "fetch:geo": "node scripts/fetch-geo.js"
+  },
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "mmdb-lib": "^3.0.3",
+    "ws": "^8.22.0"
+  },
+  "engines": {
+    "node": "24.x"
+  },
+  "devDependencies": {
+    "country-state-city": "^3.2.1"
+  }
+}

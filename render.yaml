@@ -1,0 +1,22 @@
+# Render Blueprint — https://render.com/docs/blueprint-spec
+# In the Render dashboard: New → Blueprint → pick this repository.
+services:
+  - type: web
+    name: chatr
+    runtime: node
+    plan: free                 # upgrade to "starter" + a disk (below) to keep admin settings across restarts
+    region: frankfurt          # closest Render region to the Gulf; use "virginia" if most users are in the US. Can't be changed later.
+    buildCommand: npm ci --omit=dev && npm run fetch:geo
+    startCommand: node server.js
+    healthCheckPath: /health
+    envVars:
+      - key: TRUST_PROXY       # Render is behind a proxy: read the visitor's real IP from its headers
+        value: "1"
+      - key: ADMIN_PASSWORD    # Render asks you for this when you create the Blueprint
+        sync: false
+    # On a paid plan, uncomment to keep the word filter, bans and anti-spam settings across restarts:
+    # disk:
+    #   name: chatr-data
+    #   mountPath: /var/data
+    #   sizeGB: 1
+    # and add the env var DATA_DIR=/var/data
