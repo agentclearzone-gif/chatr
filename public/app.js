@@ -102,7 +102,7 @@
     const differs = detected.state && stateSel.value && stateSel.value !== detected.state;
     h.innerHTML = `<img src="${flagUrl(detected.cc)}" alt="" width="30" height="20">` +
       '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l7 3v6c0 4.5-3 7.6-7 9-4-1.4-7-4.5-7-9V6z" fill="currentColor" stroke="none"/><path d="M9 12l2 2 4-4" stroke="#fff" stroke-width="2.2"/></svg>' +
-      `<span>${detected.locked ? 'Detected from your connection' : 'Detected from your IP'}:</span> <b>${esc(place)}</b>` +
+      `<span><span class="long">${detected.locked ? 'Detected from your connection' : 'Detected from your IP'}</span><span class="short">From your IP</span>:</span> <b>${esc(place)}</b>` +
       (differs ? ' <span class="muted">· you changed the state</span>' : !detected.state ? ' <span class="muted">· please pick your state</span>' : '');
     h.hidden = false;
   }

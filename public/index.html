@@ -38,19 +38,21 @@
       <label class="ctl float"><span>Username</span><input id="fName" maxlength="16" placeholder="e.g. Sarah20" required></label>
     </div>
 
-    <div class="field">
-      <span class="lbl">Gender</span>
-      <div class="seg" role="radiogroup" aria-label="Gender">
-        <label><input type="radio" name="g" value="f"><span><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="9" r="5"/><path d="M12 14v7M9 18h6"/></svg>Female</span></label>
-        <label><input type="radio" name="g" value="m"><span><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10" cy="14" r="5.5"/><path d="M14 10l6-6M15 4h5v5"/></svg>Male</span></label>
+    <!-- side by side on phones (saves a row), stacked on larger screens -->
+    <div class="duo">
+      <div class="field gender-field">
+        <span class="lbl">Gender</span>
+        <div class="seg" role="radiogroup" aria-label="Gender">
+          <label><input type="radio" name="g" value="f"><span><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="9" r="5"/><path d="M12 14v7M9 18h6"/></svg>Female</span></label>
+          <label><input type="radio" name="g" value="m"><span><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10" cy="14" r="5.5"/><path d="M14 10l6-6M15 4h5v5"/></svg>Male</span></label>
+        </div>
       </div>
-    </div>
-
-    <div class="field">
-      <label class="lbl" for="fAge">Age</label>
-      <div class="frow">
-        <span class="ibadge" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="15.5" rx="3"/><path d="M8 3v4M16 3v4M3.5 10h17"/><path class="dots" d="M8 14h.01M12 14h.01M16 14h.01M8 17h.01M12 17h.01"/></svg></span>
-        <div class="ctl select"><select id="fAge"><option value="">18+</option></select></div>
+      <div class="field age-field">
+        <label class="lbl" for="fAge">Age</label>
+        <div class="frow">
+          <span class="ibadge" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="15.5" rx="3"/><path d="M8 3v4M16 3v4M3.5 10h17"/><path class="dots" d="M8 14h.01M12 14h.01M16 14h.01M8 17h.01M12 17h.01"/></svg></span>
+          <div class="ctl select"><select id="fAge"><option value="">18+</option></select></div>
+        </div>
       </div>
     </div>
 
