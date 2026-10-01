@@ -320,13 +320,13 @@
         S.rooms = new Map();
         for (const r of m.list) S.rooms.set(r.id, { ...(old.get(r.id) || { joined: false, msgs: [], unread: 0 }), ...r, count: (m.c || {})[r.id] || 0 });
         renderRooms();
-        if (isRoom(S.active) && roomOf(S.active)) renderPeer();
+        if (isRoom(S.active) && roomOf(S.active)) { renderPeer(); renderLiveNote(); }
         break;
       }
       case 'rc':
         for (const [id, n] of Object.entries(m.c)) { const r = S.rooms.get(id); if (r) r.count = n; }
         renderRooms();
-        if (isRoom(S.active) && roomOf(S.active)) renderPeer();
+        if (isRoom(S.active) && roomOf(S.active)) { renderPeer(); renderLiveNote(); }
         break;
       case 'rjoin': {
         const r = S.rooms.get(m.r);
@@ -506,7 +506,7 @@
     if (inRoom) {
       const r = roomOf(target);
       peer.innerHTML = `<div class="av room">#</div><div class="info"><div class="nm">${esc(r.name)}${r.locked ? ' <span class="lock" title="Password protected">🔒</span>' : ''}</div>` +
-        `<div class="sub">${r.count} ${r.count === 1 ? 'person' : 'people'} here${r.desc ? ' · ' + esc(r.desc) : ''}</div></div>`;
+        `<div class="sub">${r.count} ${r.count === 1 ? 'person' : 'people'} here${r.chat === false ? ' · 🔇 chat off' : ''}${r.desc ? ' · ' + esc(r.desc) : ''}</div></div>`;
     } else {
       const u = S.users.get(target);
       peer.innerHTML = `${avatar(u.g)}<div class="info"><div class="nm">${esc(u.name)}</div><div class="sub">${esc(subLine(u))}</div></div>${flagImg(u)}`;
@@ -528,7 +528,7 @@
       $('roomList').innerHTML = all.map(r => `<div class="room-row${S.active === roomKey(r.id) ? ' sel' : ''}${r.joined ? ' joined' : ''}" data-room="${esc(r.id)}">
           <div class="av room">#</div>
           <div class="info"><div class="nm">${esc(r.name)}${r.locked ? ' <span class="lock" title="Password protected">🔒</span>' : ''}</div>
-          <div class="sub">${r.count} ${r.count === 1 ? 'person' : 'people'}${r.joined ? '' : ' · tap to join'}</div></div>
+          <div class="sub">${r.count} ${r.count === 1 ? 'person' : 'people'}${r.chat === false ? ' · chat off' : ''}${r.joined ? '' : ' · tap to join'}</div></div>
           ${r.unread ? `<span class="badge">${r.unread > 99 ? '99+' : r.unread}</span>` : ''}</div>`).join('') || '<div class="empty">No rooms yet</div>';
     });
   }
@@ -670,6 +670,14 @@
   }
   function renderLiveNote() {
     const note = $('liveNote');
+    if (isRoom(S.active)) {
+      // the room's chat can be switched off by an admin: show why the message box is disabled
+      const r = roomOf(S.active), off = !!r && r.joined && r.chat === false;
+      note.hidden = !off;
+      if (r && r.joined) $('composer').classList.toggle('disabled', off);
+      if (off) note.innerHTML = '🔇 Chatting is turned off in this room. You can still message people privately.';
+      return;
+    }
     const u = S.users.get(S.active);
     note.hidden = isRoom(S.active) || !u || !S.liveAllowed;
     if (note.hidden) return;

@@ -362,12 +362,13 @@
       $('roomTable').tBodies[0].innerHTML = roomsData.length ? roomsData.map((r, i) => `<tr data-id="${esc(r.id)}">
         <td><b>${esc(r.name)}</b>${i === roomsData.findIndex(x => !x.locked) ? ' <span class="tag" style="background:#eef4fc;color:#1c5fb0">Lobby</span>' : ''}${r.desc ? `<div class="muted">${esc(r.desc)}</div>` : ''}</td>
         <td>${r.locked ? '🔒 Password' : 'Open'}</td>
+        <td><button class="btn sm ${r.chat ? 'ghost' : 'outline-danger'}" data-chat title="${r.chat ? 'Everyone can send messages. Click to turn chat off.' : 'Nobody can post. Click to turn chat on.'}">${r.chat ? '💬 On' : '🔇 Off'}</button></td>
         <td class="num"><b>${fmt(r.members)}</b></td>
         <td class="num">${fmt(r.messages)}</td>
         <td class="actions">
           <button class="btn sm ghost" data-move="-1" ${i === 0 ? 'disabled' : ''} title="Move up">↑</button><button class="btn sm ghost" data-move="1" ${i === roomsData.length - 1 ? 'disabled' : ''} title="Move down">↓</button>
           <button class="btn sm ghost" data-edit>Edit</button><button class="btn sm outline-danger" data-del>Delete</button></td></tr>`).join('')
-        : '<tr><td colspan="5" class="empty">No rooms. Create one →</td></tr>';
+        : '<tr><td colspan="6" class="empty">No rooms. Create one →</td></tr>';
     }
     const f = $('roomFilter'), cur = f.value;
     f.innerHTML = '<option value="">All rooms</option>' + roomsData.map(r => `<option value="${esc(r.id)}">${esc(r.name)}</option>`).join('');
@@ -385,11 +386,14 @@
     const tr = e.target.closest('tr[data-id]'); if (!tr) return;
     const r = roomsData.find(x => x.id === tr.dataset.id); if (!r) return;
     try {
-      if (e.target.closest('[data-move]')) {
+      if (e.target.closest('[data-chat]')) {
+        await api(`/rooms/${r.id}`, { method: 'PATCH', body: { chat: !r.chat } });
+        toast(`Chat ${r.chat ? 'turned off' : 'turned on'} in “${r.name}”`);
+      } else if (e.target.closest('[data-move]')) {
         await api(`/rooms/${r.id}/move`, { method: 'POST', body: { dir: +e.target.closest('[data-move]').dataset.move } });
       } else if (e.target.closest('[data-edit]')) {
         editingRoom = r.id;
-        $('rfName').value = r.name; $('rfDesc').value = r.desc || ''; $('rfPw').value = ''; $('rfRemovePw').checked = false;
+        $('rfName').value = r.name; $('rfDesc').value = r.desc || ''; $('rfPw').value = ''; $('rfRemovePw').checked = false; $('rfChat').checked = r.chat;
         $('roomFormTitle').textContent = `Edit “${r.name}”`; $('roomFormBtn').textContent = 'Save changes';
         $('rfPwLabel').innerHTML = r.locked ? 'New password <span class="muted">(leave empty to keep the current one)</span>' : 'Password <span class="muted">(optional; set one to lock the room)</span>';
         $('rfRemoveWrap').hidden = !r.locked; $('roomFormCancel').hidden = false; $('roomFormErr').textContent = '';
@@ -408,7 +412,7 @@
   $('roomForm').addEventListener('submit', async e => {
     e.preventDefault();
     $('roomFormErr').textContent = '';
-    const body = { name: $('rfName').value, desc: $('rfDesc').value, password: $('rfPw').value };
+    const body = { name: $('rfName').value, desc: $('rfDesc').value, password: $('rfPw').value, chat: $('rfChat').checked };
     try {
       if (editingRoom) {
         if ($('rfRemovePw').checked) body.removePassword = true;

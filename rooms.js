@@ -25,7 +25,7 @@ class Rooms {
   get(id) { return this.list.find(r => r.id === id); }
 
   /** What users see (never the password hash). */
-  publicList() { return this.list.map(r => ({ id: r.id, name: r.name, desc: r.desc, locked: !!r.pw })); }
+  publicList() { return this.list.map(r => ({ id: r.id, name: r.name, desc: r.desc, locked: !!r.pw, chat: r.chat !== false })); }
 
   validate({ name, desc, password }, except) {
     const n = typeof name === 'string' ? name.replace(/\s+/g, ' ').trim() : '';
@@ -44,21 +44,22 @@ class Rooms {
     return `${salt.toString('base64')}:${(await scrypt(password, salt)).toString('base64')}`;
   }
 
-  async create({ name, desc, password }) {
+  async create({ name, desc, password, chat }) {
     if (this.list.length >= MAX_ROOMS) throw new Error(`You can have at most ${MAX_ROOMS} rooms`);
     const v = this.validate({ name, desc, password });
-    const room = { id: crypto.randomBytes(4).toString('hex'), ...v, pw: password ? await this.hash(password) : null, created: Date.now() };
+    const room = { id: crypto.randomBytes(4).toString('hex'), ...v, pw: password ? await this.hash(password) : null, chat: chat !== false, created: Date.now() };
     this.list.push(room);
     this.save();
     return room;
   }
 
-  /** password: undefined = keep, '' or null = remove, string = set new */
-  async update(id, { name, desc, password }) {
+  /** password: undefined = keep, '' or null = remove, string = set new; chat: true/false = chatting allowed */
+  async update(id, { name, desc, password, chat }) {
     const room = this.get(id);
     if (!room) throw new Error('Room not found');
     const v = this.validate({ name: name ?? room.name, desc: desc ?? room.desc, password }, room);
     Object.assign(room, v);
+    if (typeof chat === 'boolean') room.chat = chat;
     if (password === '' || password === null) room.pw = null;
     else if (typeof password === 'string') room.pw = await this.hash(password);
     this.save();

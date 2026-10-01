@@ -11,9 +11,10 @@ const DEFAULTS = {
   muteAt: 5,                // strikes → muted for 5 minutes
   kickAt: 10,               // strikes → kicked + banned for 10 minutes
   liveTyping: true,         // private chats: the other person sees text as it is typed
+  roomMsgsPer30s: 6,        // room flood limit: messages one user may post in rooms per 30 seconds
 };
 const RANGES = {
-  powDifficulty: [12, 24], newUserRoomDelay: [0, 3600], maxNewChatsPerMin: [1, 500], muteAt: [2, 100], kickAt: [3, 200],
+  powDifficulty: [12, 24], newUserRoomDelay: [0, 3600], roomMsgsPer30s: [1, 100], maxNewChatsPerMin: [1, 500], muteAt: [2, 100], kickAt: [3, 200],
 };
 
 class Settings {

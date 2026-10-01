@@ -72,6 +72,8 @@ Everything an admin changes is kept in `store.js`: the word filter, bans, anti-s
 - **Everyone lands in the first room without a password**, so the order of rooms matters. Use ↑ ↓ to change it.
 - Users see all rooms in the sidebar with live member counts and unread badges, can be in several rooms at once, and can leave any room. Room messages are sent **only to that room's members**, so extra rooms don't slow anything down at 7,000 users.
 - The room message log (moderation) has a room filter.
+- **Chat on/off per room:** the Chat column toggles whether anyone can post in that room. When it's off, people can still be in the room, but the message box is disabled with a notice. Private messages still work, and the server enforces it.
+- **Room flood limit** (Admin → Anti-spam): the most messages one user can post in rooms in any 30 seconds (default 6, across all rooms). Going over is refused with a wait time and counts as a spam strike.
 
 ## Appearance (Admin → 🎨 Appearance)
 

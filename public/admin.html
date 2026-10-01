@@ -104,7 +104,7 @@
           <div class="ph"><h2>All rooms</h2></div>
           <div class="table-wrap">
             <table class="tbl" id="roomTable">
-              <thead><tr><th>Room</th><th>Access</th><th class="num">In room now</th><th class="num">Messages</th><th></th></tr></thead>
+              <thead><tr><th>Room</th><th>Access</th><th>Chat</th><th class="num">In room now</th><th class="num">Messages</th><th></th></tr></thead>
               <tbody></tbody>
             </table>
           </div>
@@ -116,6 +116,7 @@
           <label class="fld" style="margin-top:10px"><span id="rfPwLabel">Password <span class="muted">(optional; leave empty for an open room)</span></span>
             <input id="rfPw" type="text" maxlength="64" placeholder="4–64 characters" autocomplete="off"></label>
           <label class="chk" id="rfRemoveWrap" style="margin-top:8px" hidden><input type="checkbox" id="rfRemovePw"> Remove the password (make the room open)</label>
+          <label class="chk" style="margin-top:10px"><input type="checkbox" id="rfChat" checked> Chat enabled — everyone in the room can send messages <span class="muted">(when off, users can only message each other privately)</span></label>
           <p class="muted" style="margin:8px 0 0">Passwords are stored encrypted (hashed). Changing a password doesn't remove people already in the room.</p>
           <div class="err" id="roomFormErr"></div>
           <button class="btn primary" type="submit" id="roomFormBtn">Create room</button>
@@ -292,6 +293,11 @@
             </label>
             <label class="fld">Max new private chats per minute
               <input type="number" name="maxNewChatsPerMin" min="1" max="500">
+            </label>
+          </div>
+          <div class="row">
+            <label class="fld">Room messages per user per 30 seconds <span class="muted">(flood limit, all rooms together)</span>
+              <input type="number" name="roomMsgsPer30s" min="1" max="100">
             </label>
           </div>
 

@@ -238,6 +238,7 @@ module.exports = function createAdminApi(ctx) {
       if (method === 'PATCH') {
         const body = await readBody(req);
         const patch = { name: body.name, desc: body.desc };
+        if (typeof body.chat === 'boolean') patch.chat = body.chat;
         if (body.removePassword) patch.password = '';
         else if (typeof body.password === 'string' && body.password !== '') patch.password = body.password;
         try { await ctx.rooms.update(m[1], patch); } catch (e) { return json(res, 400, { error: e.message }); }

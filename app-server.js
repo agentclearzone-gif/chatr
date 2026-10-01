@@ -181,7 +181,7 @@ const adminApi = createAdminApi({
   theme, themeInfo: () => ({ theme: theme.all(), presets: Theme.PRESETS, defaultLogo: Theme.DEFAULT_LOGO, heroDefault: HERO_DEFAULT, ...themeAssets(theme.all()) }),
   onThemeChange: renderIndex,
   rooms: {
-    list: () => rooms.list.map(r => ({ id: r.id, name: r.name, desc: r.desc, locked: !!r.pw, created: r.created,
+    list: () => rooms.list.map(r => ({ id: r.id, name: r.name, desc: r.desc, locked: !!r.pw, chat: r.chat !== false, created: r.created,
       members: (roomMembers.get(r.id) || EMPTY).size, messages: roomMsgCount.get(r.id) || 0 })),
     async create(data) { const r = await rooms.create(data); broadcastRooms(); return r; },
     async update(id, data) { const r = await rooms.update(id, data); broadcastRooms(); return r; },
@@ -376,14 +376,20 @@ function handle(ws, m) {
     case 'room': {
       const room = rooms.get(typeof m.r === 'string' ? m.r : 'main');
       if (!room || !u.rooms.has(room.id)) return send(ws, { t: 'err', e: 'Join the room before posting in it.' });
+      if (room.chat === false) return send(ws, { t: 'err', e: 'Chatting is turned off in this room. You can still message people privately.' });
       const text = cleanText(m.x, MAX_TEXT);
       if (!text) return;
       const muted = antispam.checkMuted(u);
       if (muted) return send(ws, { t: 'err', e: muted });
-      if (!allow(u.roomBucket, 0.5, 4)) {
+      // Flood limit (admin-configurable): at most N room messages per user in any 30 seconds, across all rooms.
+      const now = Date.now(), limit = settings.get('roomMsgsPer30s');
+      u.roomTimes = u.roomTimes.filter(t => now - t < 30000);
+      if (u.roomTimes.length >= limit) {
         antispam.strike(u, 'rateLimited');
-        return send(ws, { t: 'err', e: 'Slow down — you are sending too fast.' });
+        const wait = Math.ceil((u.roomTimes[0] + 30000 - now) / 1000);
+        return send(ws, { t: 'err', e: `You can send ${limit} message${limit === 1 ? '' : 's'} every 30 seconds in rooms. Try again in ${wait}s.` });
       }
+      u.roomTimes.push(now);
       const spam = antispam.checkText(u, text, 'room');
       if (spam) return send(ws, { t: 'err', e: spam });
       const ts = Date.now();
@@ -593,7 +599,7 @@ async function join(ws, m) {
   clearTimeout(ws.joinTimer);
   const u = {
     id: nextId++, name, g, age, loc, cc, ws, ip: ws.ip, ipcc: ws.ipcc, device, joined: Date.now(), msgCount: 0,
-    roomBucket: bucket(4), pmBucket: bucket(15), imgBucket: bucket(3), tyBucket: bucket(3), draftBucket: bucket(30), roomPwBucket: bucket(5),
+    roomTimes: [], pmBucket: bucket(15), imgBucket: bucket(3), tyBucket: bucket(3), draftBucket: bucket(30), roomPwBucket: bucket(5),
     blocked: new Set(), convoKeys: new Set(), rooms: new Set(),
   };
   u.tuple = [u.id, name, g, age, loc, cc];
