@@ -4,10 +4,13 @@
   "description": "ArabianTalk: ultra-fast in-memory chatroom",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js",
+    "start": "node --env-file-if-exists=.env server.js",
     "loadtest": "node loadtest.js",
     "build:states": "node scripts/build-states.js",
-    "fetch:geo": "node scripts/fetch-geo.js"
+    "fetch:geo": "node scripts/fetch-geo.js",
+    "db:start": "sh scripts/localdb.sh start",
+    "db:stop": "sh scripts/localdb.sh stop",
+    "db:status": "sh scripts/localdb.sh status"
   },
   "license": "ISC",
   "type": "commonjs",
