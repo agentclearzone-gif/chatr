@@ -131,6 +131,7 @@ const roomLog = [];           // last ROOM_LOG_SIZE room messages (all rooms), f
 const roomMembers = new Map(); // room id -> Set of users currently in it
 const roomMsgCount = new Map(); // room id -> messages since server start
 let imgStoreBytes = 0;
+let pmSeq = 0;                 // private message ids (read receipts)
 let nextId = 1;
 let pendingJoins = [];
 let pendingLeaves = [];
@@ -477,7 +478,7 @@ function handle(ws, m) {
         if (e) return send(ws, { t: 'ack', c, ok: false, e });
       }
       const ts = Date.now();
-      const out = { t: 'pm', f: u.id, ts };
+      const out = { t: 'pm', f: u.id, ts, mid: ++pmSeq }; // mid: for read receipts
       let stored;
       if (typeof m.i === 'string') {
         if (m.i.length > MAX_IMG_CHARS || !IMG_RE.test(m.i)) return send(ws, { t: 'ack', c, ok: false, e: 'Invalid picture' });
@@ -513,10 +514,10 @@ function handle(ws, m) {
       }
       u.msgCount++;
       record(u, to, stored);
-      if (to.blocked.has(u.id)) return send(ws, { t: 'ack', c, ok: true }); // silently dropped
+      if (to.blocked.has(u.id)) return send(ws, { t: 'ack', c, ok: true }); // silently dropped (never shows as read)
       send(to.ws, out);
       // tell the sender if the text was masked so their copy matches what was delivered
-      return send(ws, { t: 'ack', c, ok: true, ...(stored.o ? { x: out.x } : {}) });
+      return send(ws, { t: 'ack', c, ok: true, mid: out.mid, ...(stored.o ? { x: out.x } : {}) });
     }
     case 'draft': {
       // Live typing preview for private chats: relayed, never stored, word-filtered.
@@ -529,6 +530,12 @@ function handle(ws, m) {
       }
       const x = typeof m.x === 'string' ? filter.maskAll(m.x.replace(CTRL_RE, ' ').slice(0, MAX_TEXT)) : '';
       send(to.ws, { t: 'draft', f: u.id, x });
+      return;
+    }
+    case 'read': {
+      // read receipt: "I've seen your messages up to id N" → tell the sender (blue ticks)
+      const from = users.get(m.f);
+      if (from && from !== u && Number.isInteger(m.mid) && m.mid > 0 && !u.blocked.has(from.id) && allow(u.readBucket, 5, 20)) send(from.ws, { t: 'read', by: u.id, mid: m.mid });
       return;
     }
     case 'ty': {
@@ -710,7 +717,7 @@ async function join(ws, m) {
   clearTimeout(ws.joinTimer);
   const u = {
     id: nextId++, name: display, ...profile, ws, ip: ws.ip, ipcc: ws.ipcc, device, acct: acct ? acct.key : null, joined: Date.now(), msgCount: 0,
-    roomTimes: [], pmBucket: bucket(15), imgBucket: bucket(3), tyBucket: bucket(3), draftBucket: bucket(30), roomPwBucket: bucket(5), profileBucket: bucket(5), friendBucket: bucket(20),
+    roomTimes: [], pmBucket: bucket(15), imgBucket: bucket(3), tyBucket: bucket(3), draftBucket: bucket(30), roomPwBucket: bucket(5), profileBucket: bucket(5), friendBucket: bucket(20), readBucket: bucket(20),
     blocked: new Set(), convoKeys: new Set(), rooms: new Set(),
   };
   u.tuple = tupleOf(u);

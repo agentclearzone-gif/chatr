@@ -401,20 +401,29 @@
       case 'pm': {
         if (!S.users.has(m.f)) return;
         hideDraft(m.f);
-        pushMsg(m.f, { from: m.f, x: m.x, i: m.i, ts: m.ts });
+        pushMsg(m.f, { from: m.f, x: m.x, i: m.i, ts: m.ts, mid: m.mid });
         hideTyping(m.f);
         chime();
+        markRead(m.f);
         break;
       }
       case 'ack': {
         const p = S.pendingAcks.get(m.c);
         S.pendingAcks.delete(m.c);
         if (p && m.ok && m.x) { p.msg.x = m.x; const b = p.msg.el && p.msg.el.querySelector('.bubble'); if (b) b.textContent = m.x; }
+        if (p && m.ok) { p.msg.mid = m.mid; p.msg.state = 'sent'; updateTicks(p.msg); }
         if (p && !m.ok) {
           p.msg.fail = m.e || 'Not delivered';
           const el = p.msg.el;
           if (el) { el.classList.add('fail'); el.querySelector('.meta').textContent = '⚠ ' + p.msg.fail; }
         }
+        break;
+      }
+      case 'read': { // the other person has seen my messages up to m.mid → blue ticks
+        const c = S.convos.get(m.by);
+        if (!c) break;
+        c.seenUpTo = Math.max(c.seenUpTo || 0, m.mid);
+        for (const x of c.msgs) if (x.me && x.mid && x.mid <= m.mid && x.state !== 'read') { x.state = 'read'; updateTicks(x); }
         break;
       }
       case 'ty': if (S.active === m.f) showTyping(); break;
@@ -517,8 +526,31 @@
     const meta = document.createElement('div');
     meta.className = 'meta';
     meta.textContent = msg.fail ? '⚠ ' + msg.fail : timeFmt.format(msg.ts);
+    if (msg.me && !isRoom(target) && !msg.fail) meta.insertAdjacentHTML('beforeend', ticksHtml(msg));
     el.appendChild(meta);
     return el;
+  }
+
+  // ---------------- read receipts (private chats): ◷ sending · grey ✓✓ delivered · blue ✓✓ read ----------------
+  const TICKS = '<svg viewBox="0 0 24 14" aria-hidden="true"><path d="M1.5 7.5 6 12 15 2.5"/><path d="M9 11.2 10 12 19 2.5"/></svg>';
+  const CLOCK = '<svg viewBox="0 0 14 14" aria-hidden="true"><circle cx="7" cy="7" r="5.3"/><path d="M7 4.2V7l2 1.3"/></svg>';
+  function ticksHtml(msg) {
+    const st = msg.state || 'sending';
+    const label = { sending: 'Sending', sent: 'Delivered', read: 'Read' }[st];
+    return `<span class="ticks ${st}" title="${label}" aria-label="${label}">${st === 'sending' ? CLOCK : TICKS}</span>`;
+  }
+  function updateTicks(msg) {
+    const t = msg.el && msg.el.querySelector('.ticks');
+    if (t) t.outerHTML = ticksHtml(msg);
+  }
+  const chatVisible = id => S.active === id && !document.hidden && (window.innerWidth > 720 || document.body.classList.contains('chat-open'));
+  /** Tell the other person I've seen their messages (only while their chat is actually on screen). */
+  function markRead(id) {
+    const c = S.convos.get(id);
+    if (!c || c.gone || !chatVisible(id)) return;
+    let last = 0;
+    for (const x of c.msgs) if (!x.me && x.mid > last) last = x.mid;
+    if (last > (c.readSent || 0)) { c.readSent = last; send({ t: 'read', f: id, mid: last }); }
   }
 
   function stickToBottom(fn) {
@@ -570,6 +602,7 @@
     renderRooms();
     schedulePanes();
     if (window.innerWidth > 720 && !$('composer').classList.contains('disabled')) $('text').focus();
+    if (!isRoom(target)) markRead(target); // after the chat is on screen (phones slide it in)
   }
 
   // Chat header: the room (name, lock, members) or the person you're talking to.
@@ -943,7 +976,7 @@
     document.title = n ? `(${n}) ${SITE()}` : SITE();
   }
   document.addEventListener('visibilitychange', () => {
-    if (!document.hidden && S.me && S.active != null) { const c = convo(S.active); if (c.unread) { c.unread = 0; updateBadges(S.active); } }
+    if (!document.hidden && S.me && S.active != null) { const c = convo(S.active); if (c.unread) { c.unread = 0; updateBadges(S.active); } if (!isRoom(S.active)) markRead(S.active); }
   });
 
   // ---------------- me box (opens the profile dialog) ----------------
