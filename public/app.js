@@ -6,6 +6,28 @@
   const flagUrl = cc => `https://flagcdn.com/w40/${cc}.png`;
   const flagSrcset = cc => `https://flagcdn.com/w80/${cc}.png 2x`;
   const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  // Emoji → Google Noto Emoji image (Apache 2.0, pinned version); matched emojis are shown as images in messages
+  const NOTO = 'https://cdn.jsdelivr.net/gh/googlefonts/noto-emoji@v2.048/svg/';
+  const emojiUrl = e => NOTO + 'emoji_u' + [...e].map(c => c.codePointAt(0).toString(16).padStart(4, '0')).filter(h => h !== 'fe0f').join('_') + '.svg';
+  const ZWJ = String.fromCharCode(0x200d), VS16 = String.fromCharCode(0xfe0f);
+  const EMOJI_RE = new RegExp('(?:\\p{Regional_Indicator}\\p{Regional_Indicator}|\\p{Extended_Pictographic}(?:' + VS16 + '|\\p{Emoji_Modifier})?(?:' + ZWJ + '\\p{Extended_Pictographic}(?:' + VS16 + '|\\p{Emoji_Modifier})?)*)', 'gu');
+  /** Put message text into a bubble, showing emojis as images (falls back to the device's emoji if an image is missing). */
+  function setBubbleText(el, text) {
+    el.textContent = '';
+    let last = 0, count = 0;
+    text.replace(EMOJI_RE, (m, off) => {
+      if (off > last) el.append(text.slice(last, off));
+      const img = document.createElement('img');
+      img.className = 'emj'; img.alt = m; img.draggable = false; img.src = emojiUrl(m);
+      img.onerror = () => img.replaceWith(m);
+      el.append(img);
+      last = off + m.length; count++;
+      return m;
+    });
+    if (last < text.length) el.append(text.slice(last));
+    // 1–3 emojis and nothing else: show them big, like WhatsApp
+    el.classList.toggle('big-emoji', count > 0 && count <= 3 && !text.replace(EMOJI_RE, '').trim());
+  }
   const store = {
     get(k) { try { return JSON.parse(localStorage.getItem(k)); } catch { return null; } },
     set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
@@ -22,8 +44,19 @@
       ? `<div class="av ${g}"><img src="/avatar/${encodeURIComponent(x.name)}?v=${encodeURIComponent(x.photo)}" alt="" loading="lazy"></div>`
       : `<div class="av ${g}">${AVATAR[g]}</div>`;
     const away = typeof x === 'object' && x.idle && S.users.has(x.id) ? awayFor(x.idle) : 0;
-    if (!away) return pic;
-    return `<div class="av-wrap">${pic}<span class="idle-badge" title="Away for ${awayLong(away)}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/></svg>${awayShort(away)}</span></div>`;
+    const st = typeof x === 'object' && STATUS[x.status] && x.status !== 'online' && (S.users.has(x.id) || x === S.me) ? x.status : '';
+    if (!away && !st) return pic;
+    return `<div class="av-wrap${away ? ' idle' : ''}">${pic}` +
+      (st ? `<span class="st-dot st-${st}" title="${STATUS[st].label}"></span>` : '') +
+      (away ? `<span class="idle-badge" title="Away for ${awayLong(away)}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/></svg>${awayShort(away)}</span>` : '') + '</div>';
+  };
+  // statuses people can pick (invisible = appear offline: hidden from lists, can still chat)
+  const STATUS = {
+    online: { label: 'Online', hint: 'Available to chat' },
+    busy: { label: 'Busy', hint: 'Shown as busy' },
+    away: { label: 'Away', hint: 'Shown as away' },
+    dnd: { label: 'Do not disturb', hint: 'Mutes sounds and pop-ups' },
+    invisible: { label: 'Invisible', hint: 'Appear offline to everyone' },
   };
   // away durations use the server's clock (corrected for this device's clock difference)
   let clockSkew = 0;
@@ -298,6 +331,8 @@
     S.acct = m.acct || null;
     store.set('chatr.mode', S.acct ? 'login' : 'guest'); // next visit: registered users get the log-in form
     renderMe();
+    const saved = store.get('chatr.status');
+    if (STATUS[saved] && saved !== 'online') send({ t: 'status', s: saved });
     if (m.warn) setTimeout(() => toast(m.warn), 600);
     $('login').hidden = true;
     $('app').hidden = false;
@@ -348,10 +383,12 @@
     resetToLogin('You left the chat. All messages were deleted.');
   };
 
-  const toUser = t => ({ id: t[0], name: t[1], g: t[2], age: t[3], loc: t[4], cc: t[5], reg: t[6] === 1, photo: t[7] || 0, idle: t[8] || 0 });
-  function addUser(t) {
-    if (S.users.has(t[0]) || (S.me && t[0] === S.me.id)) return;
-    const u = toUser(t); u.seq = ++S.seq;
+  const toUser = t => ({ id: t[0], name: t[1], g: t[2], age: t[3], loc: t[4], cc: t[5], reg: t[6] === 1, photo: t[7] || 0, idle: t[8] || 0, status: t[9] || '', since: t[10] || 0 });
+  function addUser(t, ghost) {
+    const old = S.users.get(t[0]);
+    if (old && old.ghost && !ghost) { const u = toUser(t); u.seq = old.seq; S.users.set(u.id, u); return; } // invisible person showed up
+    if (old || (S.me && t[0] === S.me.id)) return;
+    const u = toUser(t); u.seq = ++S.seq; if (ghost) u.ghost = true; // ghost: invisible sender, kept out of the lists
     S.users.set(u.id, u);
   }
 
@@ -409,6 +446,7 @@
         break;
       }
       case 'pm': {
+        if (!S.users.has(m.f) && m.fu) { addUser(m.fu, true); const c = S.convos.get(m.f); if (c && c.gone) { c.gone = false; if (S.active === m.f) { renderPeer(); renderLiveNote(); } } }
         if (!S.users.has(m.f)) return;
         hideDraft(m.f);
         pushMsg(m.f, { from: m.f, x: m.x, i: m.i, ts: m.ts, mid: m.mid });
@@ -420,7 +458,7 @@
       case 'ack': {
         const p = S.pendingAcks.get(m.c);
         S.pendingAcks.delete(m.c);
-        if (p && m.ok && m.x) { p.msg.x = m.x; const b = p.msg.el && p.msg.el.querySelector('.bubble'); if (b) b.textContent = m.x; }
+        if (p && m.ok && m.x) { p.msg.x = m.x; const b = p.msg.el && p.msg.el.querySelector('.bubble'); if (b) setBubbleText(b, m.x); }
         if (p && m.ok) { p.msg.mid = m.mid; p.msg.state = 'sent'; updateTicks(p.msg); }
         if (p && !m.ok) {
           p.msg.fail = m.e || 'Not delivered';
@@ -442,7 +480,7 @@
       case 'kicked': S.closeReason = m.e; break;
       case 'uu': { // someone's profile changed (photo, details, registered)
         const nu = toUser(m.u);
-        if (S.me && nu.id === S.me.id) { S.me = nu; renderMe(); break; }
+        if (S.me && nu.id === S.me.id) { nu.status = S.me.status; S.me = nu; renderMe(); break; }
         const old = S.users.get(nu.id);
         if (!old) break;
         nu.seq = old.seq;
@@ -461,14 +499,24 @@
         if (S.active != null && !isRoom(S.active) && m.u.some(([id]) => id === S.active)) renderPeer();
         break;
       }
+      case 'us': { // people changed their status (busy / away / do not disturb)
+        if (m.now) clockSkew = m.now - Date.now();
+        for (const [id, s, since] of m.u) { const u = S.users.get(id); if (u) { u.status = s; u.since = since; } }
+        markDirty(); schedulePanes();
+        if (S.active != null && !isRoom(S.active) && m.u.some(([id]) => id === S.active)) renderPeer();
+        break;
+      }
+      case 'mystatus':
+        S.me.status = m.s; store.set('chatr.status', m.s); renderMe();
+        break;
       case 'friends':
         S.fr = m; S.frSet = new Set(m.friends.map(f => f.name.toLowerCase()));
         markDirty(); schedulePanes();
         if (S.active != null && !isRoom(S.active)) renderPeer();
         break;
       case 'frev':
-        if (m.kind === 'request') { toast(`💌 ${m.name} sent you a friend request`); chime(); }
-        else if (m.kind === 'accepted') { toast(`❤️ ${m.name} is now your friend`); chime(); }
+        if (m.kind === 'request') { if (!dnd()) toast(`💌 ${m.name} sent you a friend request`); chime(); }
+        else if (m.kind === 'accepted') { if (!dnd()) toast(`❤️ ${m.name} is now your friend`); chime(); }
         else if (m.kind === 'error') toast(m.e);
         break;
     }
@@ -538,7 +586,7 @@
       img.src = msg.i; img.alt = 'Picture'; img.decoding = 'async';
       img.onload = () => { const box = $('msgs'); if (box.scrollHeight - box.scrollTop - box.clientHeight < 400) box.scrollTop = box.scrollHeight; };
       b.appendChild(img);
-    } else b.textContent = msg.x;
+    } else setBubbleText(b, msg.x);
     el.appendChild(b);
     const meta = document.createElement('div');
     meta.className = 'meta';
@@ -634,7 +682,7 @@
       const c = S.convos.get(target);
       const u = S.users.get(target) || (c && c.peer);
       const gone = !S.users.has(target);
-      peer.innerHTML = `${avatar(u)}<div class="info"><div class="nm">${esc(u.name)}${vb(u)}</div><div class="sub">${gone ? 'Left the chat' : esc(subLine(u))}</div></div>${flagImg(u)}`;
+      peer.innerHTML = `${avatar(u)}<div class="info"><div class="nm">${esc(u.name)}${vb(u)}</div><div class="sub">${gone ? 'Left the chat' : (STATUS[u.status] && u.status !== 'online' ? `<span class="st-label st-${u.status}">${STATUS[u.status].label}</span> · ` : '') + esc(subLine(u))}</div></div>${flagImg(u)}`;
     }
     const gone = !inRoom && !S.users.has(target);
     $('picBtn').hidden = inRoom || gone;
@@ -842,7 +890,7 @@
   }
   ['pointerdown', 'keydown'].forEach(ev => document.addEventListener(ev, unlockAudio, { capture: true }));
   function chime() {
-    if (!S.sound || !audioCtx || Date.now() - lastChime < 800) return;
+    if (!S.sound || dnd() || !audioCtx || Date.now() - lastChime < 800) return;
     lastChime = Date.now();
     const t0 = audioCtx.currentTime;
     [[880, 0], [1318.5, 0.12]].forEach(([freq, at]) => {
@@ -870,18 +918,49 @@
   };
   renderSoundBtn();
 
-  // emoji
-  const EMOJI = '😀 😂 🥰 😍 😘 😊 😉 😎 🤔 😅 😭 😡 😴 🥺 😳 🙈 👍 👋 🙏 👏 💪 🔥 ✨ 🎉 ❤️ 💔 💯 🌹 ☕ 🍕 🎵 😇'.split(' ');
-  $('emojiPop').innerHTML = EMOJI.map(e => `<button type="button">${e}</button>`).join('');
-  $('emojiBtn').onclick = () => { $('emojiPop').hidden = !$('emojiPop').hidden; };
-  $('emojiPop').onclick = e => {
-    if (e.target.tagName !== 'BUTTON') return;
-    const t = $('text');
-    const pos = t.selectionStart ?? t.value.length;
-    t.value = t.value.slice(0, pos) + e.target.textContent + t.value.slice(t.selectionEnd ?? pos);
-    t.focus();
-    t.dispatchEvent(new Event('input'));
+  // ---------------- emoji panel (Google Noto Emoji images, same look on every device) ----------------
+  const EP_RECENT = 'chatr.recentEmoji';
+  let epBuilt = false;
+  const epButton = e => `<button type="button" data-e="${e}" title="${e}"><img src="${emojiUrl(e)}" alt="${e}" loading="lazy" draggable="false"></button>`;
+  function epRecentHtml() {
+    const recent = store.get(EP_RECENT) || [];
+    return recent.length ? `<div class="ep-sec" id="ep-recent"><div class="ep-h">Recently used</div><div class="ep-items">${recent.map(epButton).join('')}</div></div>` : '';
+  }
+  function buildEmojiPanel() {
+    epBuilt = true;
+    const cats = window.EMOJI_CATS || [];
+    $('epTabs').innerHTML = `<button type="button" data-cat="recent" title="Recently used"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg></button>` +
+      cats.map(c => `<button type="button" data-cat="${c.id}" title="${c.name}"><img src="${emojiUrl(c.icon)}" alt="${c.name}"></button>`).join('');
+    $('epGrid').innerHTML = epRecentHtml() + cats.map(c => `<div class="ep-sec" id="ep-${c.id}"><div class="ep-h">${c.name}</div>` +
+      `<div class="ep-items">${[...new Set(c.list.split(' ').filter(Boolean))].map(epButton).join('')}</div></div>`).join('');
+  }
+  $('emojiBtn').onclick = () => {
+    if (!epBuilt) buildEmojiPanel();
+    $('emojiPop').hidden = !$('emojiPop').hidden;
   };
+  $('epTabs').addEventListener('click', e => {
+    const b = e.target.closest('[data-cat]'); if (!b) return;
+    const sec = $('ep-' + b.dataset.cat) || $('ep-smileys');
+    $('epGrid').scrollTo({ top: sec.offsetTop - $('epGrid').offsetTop, behavior: 'smooth' });
+  });
+  $('epGrid').addEventListener('click', e => {
+    const b = e.target.closest('[data-e]'); if (!b) return;
+    const em = b.dataset.e, t = $('text');
+    const pos = t.selectionStart ?? t.value.length;
+    t.value = t.value.slice(0, pos) + em + t.value.slice(t.selectionEnd ?? pos);
+    t.selectionStart = t.selectionEnd = pos + em.length;
+    if (window.innerWidth > 720) t.focus();
+    t.dispatchEvent(new Event('input'));
+    // remember it in "Recently used"
+    const recent = [em, ...(store.get(EP_RECENT) || []).filter(x => x !== em)].slice(0, 24);
+    store.set(EP_RECENT, recent);
+    const old = $('ep-recent'), html = epRecentHtml();
+    if (old) old.outerHTML = html; else $('epGrid').insertAdjacentHTML('afterbegin', html);
+  });
+  // close when clicking anywhere else
+  document.addEventListener('pointerdown', e => {
+    if (!$('emojiPop').hidden && !e.target.closest('#emojiPop, #emojiBtn')) $('emojiPop').hidden = true;
+  });
 
   // pictures: downscale in the browser so they are small and fast to relay
   $('picBtn').onclick = () => $('picInput').click();
@@ -929,6 +1008,7 @@
     let f = 0, m = 0;
     const chats = [], rest = [];
     for (const u of S.users.values()) {
+      if (u.ghost) continue;
       u.g === 'f' ? f++ : m++;
       if (S.filter !== 'all' && u.g !== S.filter) continue;
       if (q && !u.name.toLowerCase().includes(q) && !(u.loc || '').toLowerCase().includes(q) && !countryName(u.cc).toLowerCase().includes(q)) continue;
@@ -997,11 +1077,36 @@
   });
 
   // ---------------- me box (opens the profile dialog) ----------------
+  const myStatus = () => (S.me && STATUS[S.me.status] ? S.me.status : 'online');
+  const dnd = () => myStatus() === 'dnd';
   function renderMe() {
-    $('meBox').innerHTML = `${avatar(S.me)}<div class="info"><div class="nm">${esc(S.me.name)}${vb(S.me)}</div><div class="sub">${S.acct ? 'My profile' : 'Guest · tap to create a profile'}</div></div>`;
+    const st = myStatus();
+    $('meBox').innerHTML = `${avatar(S.me)}<div class="info"><div class="nm">${esc(S.me.name)}${vb(S.me)}</div>` +
+      `<button type="button" class="st-btn" id="stBtn" aria-haspopup="menu" title="Set your status"><i class="st-ic st-${st}"></i>${STATUS[st].label}<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button></div>`;
     $('meBox').title = S.acct ? 'Edit your profile' : 'Create a profile to keep your name';
   }
-  $('meBox').addEventListener('click', () => openProfile());
+  $('meBox').addEventListener('click', e => {
+    if (e.target.closest('#stBtn')) { e.stopPropagation(); toggleStatusMenu(); return; }
+    openProfile();
+  });
+  function toggleStatusMenu(force) {
+    const menu = $('stMenu');
+    const open = force !== undefined ? force : menu.hidden;
+    if (!open) { menu.hidden = true; return; }
+    const cur = myStatus();
+    menu.innerHTML = Object.entries(STATUS).map(([k, v]) =>
+      `<button type="button" role="menuitemradio" aria-checked="${k === cur}" data-st="${k}"${k === cur ? ' class="on"' : ''}><i class="st-ic st-${k}"></i><span><b>${v.label}</b><small>${v.hint}</small></span></button>`).join('');
+    menu.hidden = false;
+  }
+  $('stMenu').addEventListener('click', e => {
+    const b = e.target.closest('[data-st]');
+    if (!b) return;
+    toggleStatusMenu(false);
+    if (b.dataset.st === myStatus()) return;
+    if (!send({ t: 'status', s: b.dataset.st })) toast('Not connected. Please try again.');
+  });
+  document.addEventListener('pointerdown', e => { if (!$('stMenu').hidden && !e.target.closest('#stMenu, #stBtn')) toggleStatusMenu(false); });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('stMenu').hidden) toggleStatusMenu(false); });
 
   // ---------------- sidebar sections: People · Rooms · Inbox · History ----------------
   let pane = 'people';
@@ -1060,7 +1165,7 @@
   function fillSearchCountries() {
     // countries with people online first (with counts), then every other country
     const counts = new Map();
-    for (const u of S.users.values()) counts.set(u.cc, (counts.get(u.cc) || 0) + 1);
+    for (const u of S.users.values()) if (!u.ghost) counts.set(u.cc, (counts.get(u.cc) || 0) + 1);
     const cur = $('sCountry').value;
     const online = [...counts].sort((a, b) => b[1] - a[1] || countryName(a[0]).localeCompare(countryName(b[0])));
     const rest = opts.filter(([cc]) => !counts.has(cc));
@@ -1074,7 +1179,7 @@
     const g = (document.querySelector('input[name=sg]:checked') || {}).value || 'all';
     const cc = $('sCountry').value;
     const found = [...S.users.values()]
-      .filter(u => (!q || u.name.toLowerCase().includes(q)) && (g === 'all' || u.g === g) && (!cc || u.cc === cc))
+      .filter(u => !u.ghost && (!q || u.name.toLowerCase().includes(q)) && (g === 'all' || u.g === g) && (!cc || u.cc === cc))
       .sort((a, b) => (b.name.toLowerCase().startsWith(q) - a.name.toLowerCase().startsWith(q)) || b.seq - a.seq)
       .slice(0, 300);
     const one = found.length === 1;
@@ -1117,7 +1222,7 @@
       return;
     }
     const online = new Map();
-    for (const u of S.users.values()) if (u.reg) online.set(u.name.toLowerCase(), u);
+    for (const u of S.users.values()) if (u.reg && !u.ghost) online.set(u.name.toLowerCase(), u);
     const row = (f, actions, extra = '') => {
       const u = online.get(f.name.toLowerCase());
       const who = u || { name: f.name, g: f.g, photo: f.photoV, reg: true, age: f.age, loc: f.loc, cc: f.cc };

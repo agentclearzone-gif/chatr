@@ -111,6 +111,7 @@
   <aside class="side">
     <header class="side-head">
       <div class="me" id="meBox"></div>
+      <div class="st-menu" id="stMenu" role="menu" hidden></div>
       <button class="icon-btn" id="soundBtn" aria-label="Message sound on" title="Message sound on">🔔</button>
       <button class="leave-btn" id="logoutBtn" title="Leave chat and delete all messages">Leave</button>
     </header>
@@ -181,12 +182,12 @@
     <div class="typing" id="typing" hidden><span></span><span></span><span></span></div>
     <div class="live-note" id="liveNote" hidden></div>
     <form class="composer" id="composer" autocomplete="off">
-      <button type="button" class="icon-btn" id="emojiBtn" aria-label="Emoji">😊</button>
+      <button type="button" class="icon-btn emoji-btn" id="emojiBtn" aria-label="Emoji" title="Emoji"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M8.5 14.5c.9 1.3 2.1 2 3.5 2s2.6-.7 3.5-2"/><path class="dots" d="M9 9.5h.01M15 9.5h.01"/></svg></button>
       <button type="button" class="icon-btn" id="picBtn" aria-label="Send picture" title="Send picture">📷</button>
       <input type="file" id="picInput" accept="image/*" hidden>
       <input id="text" maxlength="500" placeholder="Type a message…" enterkeyhint="send">
       <button class="send" id="sendBtn" aria-label="Send">➤</button>
-      <div class="emoji-pop" id="emojiPop" hidden></div>
+      <div class="emoji-panel" id="emojiPop" hidden><div class="ep-tabs" id="epTabs"></div><div class="ep-grid" id="epGrid"></div></div>
     </form>
   </section>
 </main>
@@ -239,6 +240,7 @@
 <div class="toast" id="toast" hidden></div>
 
 <script src="/countries.js"></script>
+<script src="/emoji-data.js"></script>
 <script src="/app.js"></script>
 </body>
 </html>

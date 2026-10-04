@@ -135,6 +135,7 @@ let pmSeq = 0;                 // private message ids (read receipts)
 let nextId = 1;
 let pendingJoins = [];
 const pendingIdle = new Map(); // user id -> idle since (0 = active again), sent with the next tick
+const pendingStatus = new Map(); // user id -> [status, since]
 let pendingLeaves = [];
 const pendingRoom = new Map(); // room id -> messages waiting for the next flush
 let roomCountsDirty = false;
@@ -479,7 +480,7 @@ function handle(ws, m) {
         if (e) return send(ws, { t: 'ack', c, ok: false, e });
       }
       const ts = Date.now();
-      const out = { t: 'pm', f: u.id, ts, mid: ++pmSeq }; // mid: for read receipts
+      const out = { t: 'pm', f: u.id, ts, mid: ++pmSeq, ...(u.invisible ? { fu: u.tuple } : {}) }; // mid: read receipts; fu: sender's card if invisible
       let stored;
       if (typeof m.i === 'string') {
         if (m.i.length > MAX_IMG_CHARS || !IMG_RE.test(m.i)) return send(ws, { t: 'ack', c, ok: false, e: 'Invalid picture' });
@@ -540,8 +541,23 @@ function handle(ws, m) {
       if (!since === !u.idleSince) return; // no change
       u.idleSince = since;
       u.tuple[8] = since;
-      pendingIdle.set(u.id, since);
+      if (!u.invisible) pendingIdle.set(u.id, since);
       return;
+    }
+    case 'status': {
+      // chosen status: online · busy · away · dnd (do not disturb) · invisible (appear offline)
+      const s = ['online', 'busy', 'away', 'dnd', 'invisible'].includes(m.s) ? m.s : null;
+      if (!s || !allow(u.statusBucket, 0.2, 6)) return;
+      const wasInvisible = !!u.invisible;
+      u.invisible = s === 'invisible';
+      u.status = s === 'online' || s === 'invisible' ? '' : s;
+      u.statusSince = u.status ? Date.now() : 0;
+      u.tuple = tupleOf(u);
+      snapshot = null;
+      if (u.invisible && !wasInvisible) pendingLeaves.push(u.id);        // disappear from everyone's lists
+      else if (!u.invisible && wasInvisible) pendingJoins.push(u.tuple);   // reappear
+      else if (!u.invisible) pendingStatus.set(u.id, [u.status, u.statusSince]);
+      return send(ws, { t: 'mystatus', s });
     }
     case 'read': {
       // read receipt: "I've seen your messages up to id N" → tell the sender (blue ticks)
@@ -655,7 +671,7 @@ function readProfile(m, ws) {
 /** What everyone's user list gets: [id, name, gender, age, state, country, registered, photo version] */
 function tupleOf(u) {
   const acct = u.acct && accounts.get(u.acct);
-  return [u.id, u.name, u.g, u.age, u.loc, u.cc, acct ? 1 : 0, (acct && acct.photoV) || 0, u.idleSince || 0];
+  return [u.id, u.name, u.g, u.age, u.loc, u.cc, acct ? 1 : 0, (acct && acct.photoV) || 0, u.idleSince || 0, u.status || '', u.statusSince || 0];
 }
 function myAccount(u) {
   const a = u.acct && accounts.get(u.acct);
@@ -665,7 +681,7 @@ function myAccount(u) {
 function refreshUser(u) {
   u.tuple = tupleOf(u);
   snapshot = null;
-  broadcast(JSON.stringify({ t: 'uu', u: u.tuple }));
+  if (!u.invisible) broadcast(JSON.stringify({ t: 'uu', u: u.tuple }));
 }
 
 async function join(ws, m) {
@@ -728,7 +744,7 @@ async function join(ws, m) {
   clearTimeout(ws.joinTimer);
   const u = {
     id: nextId++, name: display, ...profile, ws, ip: ws.ip, ipcc: ws.ipcc, device, acct: acct ? acct.key : null, joined: Date.now(), msgCount: 0,
-    roomTimes: [], pmBucket: bucket(15), imgBucket: bucket(3), tyBucket: bucket(3), draftBucket: bucket(30), roomPwBucket: bucket(5), profileBucket: bucket(5), friendBucket: bucket(20), readBucket: bucket(20), idleBucket: bucket(6), idleSince: 0,
+    roomTimes: [], pmBucket: bucket(15), imgBucket: bucket(3), tyBucket: bucket(3), draftBucket: bucket(30), roomPwBucket: bucket(5), profileBucket: bucket(5), friendBucket: bucket(20), readBucket: bucket(20), idleBucket: bucket(6), idleSince: 0, statusBucket: bucket(6), status: '', statusSince: 0, invisible: false,
     blocked: new Set(), convoKeys: new Set(), rooms: new Set(),
   };
   u.tuple = tupleOf(u);
@@ -738,7 +754,7 @@ async function join(ws, m) {
   // Snapshot reflects the list as of its last rebuild; anything newer arrives in the next
   // batched delta (clients apply joins/leaves idempotently), so it is rebuilt at most once per tick.
   // Nobody is put in a room: people start in 1-to-1 mode and join rooms themselves.
-  if (snapshot === null) snapshot = JSON.stringify(Array.from(users.values(), x => x.tuple));
+  if (snapshot === null) snapshot = JSON.stringify(Array.from(users.values()).filter(x => !x.invisible).map(x => x.tuple));
   ws.send('{"t":"welcome","now":' + Date.now() + ',"live":' + settings.get('liveTyping') + ',"me":' + JSON.stringify(u.tuple) + ',"acct":' + JSON.stringify(myAccount(u)) +
     (warn ? ',"warn":' + JSON.stringify(warn) : '') +
     ',"rooms":' + JSON.stringify(rooms.publicList()) + ',"rc":' + JSON.stringify(roomCounts()) + ',"in":[]' +
@@ -905,10 +921,15 @@ setInterval(() => {
     broadcast(msg);
   }
   if (pendingIdle.size) {
-    const msg = JSON.stringify({ t: 'ui', now: Date.now(), u: [...pendingIdle].filter(([id]) => users.has(id)) });
+    const msg = JSON.stringify({ t: 'ui', now: Date.now(), u: [...pendingIdle].filter(([id]) => users.has(id) && !users.get(id).invisible) });
     pendingIdle.clear();
     snapshot = null;
     broadcast(msg);
+  }
+  if (pendingStatus.size) {
+    const list = [...pendingStatus].filter(([id]) => users.has(id) && !users.get(id).invisible).map(([id, [s, at]]) => [id, s, at]);
+    pendingStatus.clear();
+    if (list.length) broadcast(JSON.stringify({ t: 'us', now: Date.now(), u: list }));
   }
   for (const [id, q] of pendingRoom) {
     const batch = q.splice(0, MAX_ROOM_MSGS_PER_FLUSH);

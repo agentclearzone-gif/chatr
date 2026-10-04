@@ -111,7 +111,7 @@ module.exports = function createAdminApi(ctx) {
       if (g && u.g !== g) continue;
       if (s && !u.name.toLowerCase().includes(s) && !u.loc.toLowerCase().includes(s) && !u.ip.includes(s)) continue;
       total++;
-      if (out.length < 300) out.push({ ...userInfo(u), reg: !!u.acct, ip: u.ip, ipcc: u.ipcc, strikes: u.spam ? u.spam.strikes : 0, muted: !!(u.spam && u.spam.mutedUntil > Date.now()), joined: u.joined, msgs: u.msgCount, convos: u.convoKeys.size });
+      if (out.length < 300) out.push({ ...userInfo(u), reg: !!u.acct, status: u.invisible ? 'invisible' : u.status || 'online', ip: u.ip, ipcc: u.ipcc, strikes: u.spam ? u.spam.strikes : 0, muted: !!(u.spam && u.spam.mutedUntil > Date.now()), joined: u.joined, msgs: u.msgCount, convos: u.convoKeys.size });
     }
     out.sort((a, b) => b.joined - a.joined);
     return { total, users: out };
