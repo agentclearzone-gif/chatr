@@ -21,7 +21,7 @@ const TEXTS = { // key: [min, max]
 const { label: _l, ...GOLD } = PRESETS.gold;
 const DEFAULTS = {
   preset: 'gold', ...GOLD,
-  brandMain: 'Arabian', brandAccent: 'Talk', tagline: 'CHAT • CONNECT • DUBAI',
+  brandMain: 'chat', brandAccent: 'Me', tagline: 'CHAT • CONNECT • DUBAI',
   description: 'Free anonymous chat. Your chats are deleted as soon as you or the other person leaves. Moderators may review live chats to keep everyone safe.',
   buttonText: 'Start chatting',
   showHero: true, showPattern: true,
@@ -35,8 +35,12 @@ class Theme {
   constructor(store) {
     this.store = store;
     const saved = store.get('theme') || {};
+    // the site was renamed ArabianTalk → chatMe: update a saved name that is still the old default
+    const renamed = saved.brandMain === 'Arabian' && saved.brandAccent === 'Talk';
+    if (renamed) Object.assign(saved, { brandMain: DEFAULTS.brandMain, brandAccent: DEFAULTS.brandAccent });
     this.values = { ...DEFAULTS };
     try { this.apply(saved); } catch {}
+    if (renamed) this.save();
     for (const slot of ['hero', 'logo']) {
       const blob = store.getBlob(slot);
       if (blob) this.values[slot + 'Image'] = { type: blob.type, v: crypto.createHash('sha1').update(blob.data).digest('hex').slice(0, 10) };

@@ -1,4 +1,4 @@
-# ArabianTalk
+# chatMe
 
 A fast, responsive, anonymous chatroom. It has a main room, private one-to-one chats and picture sharing. The user list shows gender, age, location and a country flag. The admin panel at `/admin` has a word filter, live conversation review and stats by country. Chat history is never written to disk. When a user disconnects, every conversation with them is deleted, including the copy moderators can see.
 
@@ -99,7 +99,7 @@ Guests can chat without signing up. On the login screen users can also **Log in*
 
 ## Appearance (Admin → 🎨 Appearance)
 
-The default look is **Dubai Gold**: a cream background with an Arabic geometric pattern, a gold dome logo, a two-tone "Arabian**Talk**" wordmark, a Dubai skyline in the corner of the login card, gold icon badges and a gold gradient button. The chat screens use the same accent color.
+The default look is **Dubai Gold**: a cream background with an Arabic geometric pattern, a gold dome logo, a two-tone "chat**Me**" wordmark, a Dubai skyline in the corner of the login card, gold icon badges and a gold gradient button. The chat screens use the same accent color.
 
 Everything is editable from the admin panel, with a live phone preview:
 - **Color presets:** Dubai Gold, Rose, Emerald Oasis, Royal Blue, Desert Rose. You can also set your own main color, dark shade, page and card backgrounds, and text colors. It warns you if the main color is too light for white button text.

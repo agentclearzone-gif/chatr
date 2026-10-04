@@ -1,6 +1,6 @@
 # Third-party notices
 
-ArabianTalk uses the following third-party software and data.
+chatMe uses the following third-party software and data.
 
 | Component | Used for | License |
 |---|---|---|
