@@ -10,7 +10,7 @@ ChateX uses the following third-party software and data.
 | [DB-IP IP to City Lite / Country Lite](https://db-ip.com) | IP → country and state detection. Downloaded at build/run time, not stored in this repository. | CC BY 4.0 (attribution shown on the login page) |
 | [Flag images by flagcdn.com](https://flagcdn.com) | Country flags, loaded from their CDN | Public domain |
 | [Noto Emoji](https://github.com/googlefonts/noto-emoji) | Emoji images in the picker and messages, loaded from the jsDelivr CDN | Apache License 2.0 |
-| [Manrope font](https://fonts.google.com/specimen/Manrope) | Typeface, loaded from Google Fonts | SIL Open Font License 1.1 |
+| [Inter font](https://fonts.google.com/specimen/Inter) | Typeface, loaded from Google Fonts | SIL Open Font License 1.1 |
 
 `geo-states.json` is derived from country-state-city and is therefore distributed under the terms of the
 GNU General Public License v3.0: https://www.gnu.org/licenses/gpl-3.0.html

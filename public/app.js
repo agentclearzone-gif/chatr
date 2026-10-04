@@ -511,13 +511,18 @@
         break;
       case 'friends':
         S.fr = m; S.frSet = new Set(m.friends.map(f => f.name.toLowerCase()));
+        if (S.frWatch) {
+          const f = [...m.reqOut, ...m.friends].find(x => x.name.toLowerCase() === S.frWatch);
+          if (f) toast(S.frSet.has(S.frWatch) ? `❤️ You and ${f.name} are now friends` : `💌 Friend request sent to ${f.name}`);
+          if (f) S.frWatch = null;
+        }
         markDirty(); schedulePanes();
         if (S.active != null && !isRoom(S.active)) renderPeer();
         break;
       case 'frev':
         if (m.kind === 'request') { if (!dnd()) toast(`💌 ${m.name} sent you a friend request`); chime(); }
         else if (m.kind === 'accepted') { if (!dnd()) toast(`❤️ ${m.name} is now your friend`); chime(); }
-        else if (m.kind === 'error') toast(m.e);
+        else if (m.kind === 'error') { S.frWatch = null; toast(m.e); }
         break;
     }
   }
@@ -1042,7 +1047,7 @@
       const c = S.convos.get(u.id);
       const unread = c && c.unread ? `<span class="badge">${c.unread > 99 ? '99+' : c.unread}</span>` : '';
       html += `<div class="row ${u.g}${S.active === u.id ? ' sel' : ''}" data-id="${u.id}" style="transform:translateY(${i * RH}px)">` +
-        `${avatar(u)}<div class="info"><div class="nm">${esc(u.name)}${vb(u)}${isFriend(u) ? '<span class="heart" title="Friend">❤</span>' : ''}</div><div class="sub">${esc(subLine(u))}</div></div>${unread}${flagImg(u)}</div>`;
+        `${avatar(u)}<div class="info"><div class="nm">${esc(u.name)}${vb(u)}${isFriend(u) ? '<span class="heart" title="Friend">❤</span>' : ''}</div><div class="sub">${esc(subLine(u))}</div></div>${unread}${quickFriend(u)}${flagImg(u)}</div>`;
     }
     if (!n) html = `<div class="empty">${S.q || S.filter !== 'all' ? 'No one matches.' : 'No one else is online yet.'}</div>`;
     // keep the spacer, replace rows
@@ -1050,7 +1055,7 @@
     list.insertAdjacentHTML('beforeend', html);
   }
   list.addEventListener('scroll', () => { if (!rafPending) { rafPending = true; requestAnimationFrame(() => { rafPending = false; renderList(); }); } }, { passive: true });
-  list.addEventListener('click', e => { const r = e.target.closest('.row'); if (r) openChat(+r.dataset.id); });
+  list.addEventListener('click', e => { if (quickFriendClick(e)) return; const r = e.target.closest('.row'); if (r) openChat(+r.dataset.id); });
 
   $('tabs').addEventListener('click', e => {
     const b = e.target.closest('button'); if (!b) return;
@@ -1189,7 +1194,7 @@
     $('sHead').hidden = false;
     $('sHead').textContent = found.length ? `${found.length}${found.length === 300 ? '+' : ''} ${what} online` : 'No matches online right now. Try another name, gender, age or country.';
     $('sResults').innerHTML = found.map(u => `<div class="crow ${u.g}" data-uid="${u.id}">${avatar(u)}
-      <div class="info"><div class="nm">${esc(u.name)}${vb(u)}</div><div class="pv">${esc(subLine(u))}</div></div>${flagImg(u)}</div>`).join('');
+      <div class="info"><div class="nm">${esc(u.name)}${vb(u)}</div><div class="pv">${esc(subLine(u))}</div></div>${quickFriend(u)}${flagImg(u)}</div>`).join('');
   }
   $('searchForm').addEventListener('submit', e => { e.preventDefault(); runSearch(); });
   // age range: 18 to 99+ (the ages people can sign up with); the two boxes never cross
@@ -1199,7 +1204,7 @@
   $('sAgeMax').innerHTML = ageOpts(AGE_MAX);
   $('sAgeMin').addEventListener('change', () => { if (+$('sAgeMin').value > +$('sAgeMax').value) $('sAgeMax').value = $('sAgeMin').value; });
   $('sAgeMax').addEventListener('change', () => { if (+$('sAgeMax').value < +$('sAgeMin').value) $('sAgeMin').value = $('sAgeMax').value; });
-  $('sResults').addEventListener('click', e => { const r = e.target.closest('[data-uid]'); if (r) openChat(+r.dataset.uid); });
+  $('sResults').addEventListener('click', e => { if (quickFriendClick(e)) { setTimeout(runSearch, 400); return; } const r = e.target.closest('[data-uid]'); if (r) openChat(+r.dataset.uid); });
 
   // ---------------- friends (registered profiles) ----------------
   const isFriend = u => u && u.reg && S.frSet.has(u.name.toLowerCase());
@@ -1220,6 +1225,22 @@
     if (op === 'remove' && !confirm(`Remove ${name} from your friends?`)) return;
     if (op === 'cancel' && !confirm(`Cancel your friend request to ${name}?`)) return;
     send({ t: 'fr', op, name });
+  }
+  // small button on People / Search rows: add a registered person as a friend without opening the chat
+  const ADD_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c0-3.6 2.9-6 6.5-6s6.5 2.4 6.5 6M19 8v6M16 11h6"/></svg>';
+  function quickFriend(u) {
+    if (!S.acct || !u.reg || isFriend(u)) return '';
+    if (inList(S.fr.reqOut, u)) return '<span class="qf sent" title="Friend request sent">Sent</span>';
+    const accept = inList(S.fr.reqIn, u);
+    return `<button type="button" class="qf${accept ? ' go' : ''}" data-qf="${accept ? 'accept' : 'add'}" data-name="${esc(u.name)}" title="${accept ? 'Accept friend request' : 'Add friend'}" aria-label="${accept ? 'Accept friend request from' : 'Add friend:'} ${esc(u.name)}">${accept ? '✓' : ADD_ICON}</button>`;
+  }
+  function quickFriendClick(e) {
+    const b = e.target.closest('[data-qf]');
+    if (!b) return false;
+    e.stopPropagation();
+    S.frWatch = b.dataset.name.toLowerCase();
+    friendAction(b.dataset.qf, b.dataset.name);
+    return true;
   }
   $('friendBtn').onclick = () => friendAction($('friendBtn').dataset.op, $('friendBtn').dataset.name);
 
@@ -1244,9 +1265,19 @@
     html += `<div class="fsec">Online (${on.length})</div>` + (on.length ? on.map(f => row(f, '<button class="x" data-op="remove" title="Remove friend">✕</button>')).join('') : '<div class="empty-pane" style="padding:14px">No friends online right now.</div>');
     if (off.length) html += `<div class="fsec">Offline (${off.length})</div>` + off.map(f => row(f, '<button class="x" data-op="remove" title="Remove friend">✕</button>')).join('');
     if (S.fr.reqOut.length) html += `<div class="fsec">Sent requests (${S.fr.reqOut.length})</div>` + S.fr.reqOut.map(f => row(f, '<button data-op="cancel">Cancel</button>', 'waiting for them to accept')).join('');
-    if (!S.fr.friends.length && !S.fr.reqIn.length && !S.fr.reqOut.length) html += '<div class="empty-pane">No friends yet.<br>Open a chat with someone who has a ✓ profile and tap “＋ Add friend”.</div>';
-    box.innerHTML = html;
+    if (!S.fr.friends.length && !S.fr.reqIn.length && !S.fr.reqOut.length) html += '<div class="empty-pane">No friends yet.<br>Add someone by username above, or tap the ＋ next to anyone with a ✓ profile in People or Search.</div>';
+    const typed = $('frAddName') ? $('frAddName').value : '';
+    box.innerHTML = `<form class="fr-add" id="frAdd" autocomplete="off"><input id="frAddName" maxlength="16" placeholder="Add friend by username" aria-label="Username to add as a friend"><button type="submit">${ADD_ICON}Add</button></form>` + html;
+    $('frAddName').value = typed;
   }
+  $('friendsList').addEventListener('submit', e => {
+    e.preventDefault();
+    const name = $('frAddName').value.trim();
+    if (!name) return $('frAddName').focus();
+    S.frWatch = name.toLowerCase();
+    $('frAddName').value = '';
+    friendAction('add', name);
+  });
   $('friendsList').addEventListener('click', e => {
     if (e.target.closest('[data-create]')) return openProfile();
     const b = e.target.closest('[data-op]'), r = e.target.closest('.crow');
