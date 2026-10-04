@@ -305,10 +305,11 @@ input, select { font: inherit; color: inherit; }
 .sg span { min-width: 0; white-space: nowrap; }
 /* the sidebar never grows wider than its column; its content adapts to the space available */
 .side { min-width: 0; overflow: hidden; container-type: inline-size; container-name: side; }
+/* narrow columns: keep the colored icons, move them in front of the text and let the colored box show the choice */
 @container side (max-width: 350px) {
-  .sg span { justify-content: center; padding: 9px 6px 9px 26px; font-size: 13.5px; }
-  .sg span::before { left: 7px; }
-  .sg .gi, .sg .sg-av { display: none; }
+  .search-form .sg span { justify-content: center; gap: 5px; padding: 9px 4px; font-size: 13.5px; }
+  .search-form .sg span::before { display: none; }
+  .search-form .sg .gi, .search-form .sg .sg-av { order: -1; width: 19px; height: 19px; }
 }
 .search-form input, .search-form select { width: 100%; padding: 12px 14px; border: 1.5px solid var(--line); border-radius: 10px; background: var(--card);
   font-size: 16px; font-weight: 600; color: var(--text); outline: none; }
@@ -319,9 +320,12 @@ input, select { font: inherit; color: inherit; }
 .sg span { display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 9px 10px 9px 32px; border: 1.5px solid var(--line);
   border-radius: 10px; font-size: 14px; font-weight: 600; cursor: pointer; position: relative; background: var(--card); }
 .sg span::before { content: ''; position: absolute; left: 9px; top: 50%; width: 16px; height: 16px; margin-top: -9px; border-radius: 50%; border: 1.5px solid #c5c9d2; }
-.sg input:checked + span { border-color: var(--primary); }
-.sg input:checked + span::before { border-color: var(--primary); background: radial-gradient(circle, var(--primary) 0 4.5px, transparent 5.5px); }
-.sg input:focus-visible + span { outline: 2px solid var(--primary); outline-offset: 2px; }
+/* each option has its own color: All = purple (pink + blue), Female = pink, Male = blue */
+.sg .o-all { --c: #8e44ad; } .sg .o-f { --c: #e0457b; } .sg .o-m { --c: #2d8ae0; }
+.sg span:hover { border-color: color-mix(in srgb, var(--c) 45%, var(--line)); }
+.sg input:checked + span { border-color: var(--c); background: color-mix(in srgb, var(--c) 9%, var(--card)); box-shadow: 0 6px 14px -10px var(--c); }
+.sg input:checked + span::before { border-color: var(--c); background: radial-gradient(circle, var(--c) 0 4.5px, transparent 5.5px); }
+.sg input:focus-visible + span { outline: 2px solid var(--c); outline-offset: 2px; }
 .sg .gi { width: 24px; height: 24px; fill: none; stroke-width: 2; stroke-linecap: round; }
 .sg .gi .f { stroke: #e0457b; } .sg .gi .m { stroke: #2d8ae0; }
 .sg-av { width: 22px; height: 22px; border-radius: 50%; flex: none; background: center/72% no-repeat; }
