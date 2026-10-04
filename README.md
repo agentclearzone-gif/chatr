@@ -67,7 +67,8 @@ Everything an admin changes is kept in `store.js`: the word filter, bans, anti-s
 ## How users chat
 
 - **1-to-1 mode by default:** after logging in, users aren't in any room. They tap someone in **People** to chat privately, and join group rooms from the **Rooms** tab if they want.
-- **Sidebar tabs:** **People** (search plus an **All / ♀ Female / ♂ Male** filter) · **Rooms** · **Inbox** · **History**, with unread badges.
+- **Sidebar tabs:** **People** (quick search plus an **All / ♀ Female / ♂ Male** filter) · **Rooms** · **Inbox** · **History** · **Search**, with unread badges.
+- **Search:** find people online by username (partial match), gender (All / Female / Male) and country. The country list shows countries with people online first, with counts. Tap a result to start a private chat.
 - **Inbox:** everyone who has messaged you this visit, newest first, with how many messages they sent, the last one, and unread ones highlighted.
 - **History:** every chat from this visit, including people who have left. Those chats become read-only and are marked "left". Everything is deleted from the browser when *you* leave. Chats are never stored on the server, apart from the live moderation copy, which is deleted when either person leaves.
 

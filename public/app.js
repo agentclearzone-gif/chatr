@@ -944,7 +944,8 @@
   function showPane(name) {
     pane = name;
     for (const b of $('sideNav').children) b.classList.toggle('on', b.dataset.pane === name);
-    for (const n of ['people', 'rooms', 'inbox', 'history']) $('pane-' + n).hidden = n !== name;
+    for (const n of ['people', 'rooms', 'inbox', 'history', 'search']) $('pane-' + n).hidden = n !== name;
+    if (name === 'search') fillSearchCountries();
     if (name === 'people') renderList(true);
     if (name === 'rooms') renderRooms();
     renderPanes();
@@ -988,6 +989,38 @@
   }
   for (const id of ['inboxList', 'historyList']) $(id).addEventListener('click', e => { const r = e.target.closest('[data-uid]'); if (r) openChat(+r.dataset.uid); });
   setInterval(() => { if (pane === 'inbox' || pane === 'history') renderPanes(); }, 30000); // refresh "5m ago"
+
+  // ---------------- Search tab: username + gender + country ----------------
+  function fillSearchCountries() {
+    // countries with people online first (with counts), then every other country
+    const counts = new Map();
+    for (const u of S.users.values()) counts.set(u.cc, (counts.get(u.cc) || 0) + 1);
+    const cur = $('sCountry').value;
+    const online = [...counts].sort((a, b) => b[1] - a[1] || countryName(a[0]).localeCompare(countryName(b[0])));
+    const rest = opts.filter(([cc]) => !counts.has(cc));
+    $('sCountry').innerHTML = '<option value="">All Countries</option>' +
+      (online.length ? `<optgroup label="Online now">${online.map(([cc, n]) => `<option value="${cc}">${esc(countryName(cc))} (${n})</option>`).join('')}</optgroup>` : '') +
+      `<optgroup label="All countries">${rest.map(([cc, n]) => `<option value="${cc}">${esc(n)}</option>`).join('')}</optgroup>`;
+    $('sCountry').value = cur;
+  }
+  function runSearch() {
+    const q = $('sName').value.trim().toLowerCase();
+    const g = (document.querySelector('input[name=sg]:checked') || {}).value || 'all';
+    const cc = $('sCountry').value;
+    const found = [...S.users.values()]
+      .filter(u => (!q || u.name.toLowerCase().includes(q)) && (g === 'all' || u.g === g) && (!cc || u.cc === cc))
+      .sort((a, b) => (b.name.toLowerCase().startsWith(q) - a.name.toLowerCase().startsWith(q)) || b.seq - a.seq)
+      .slice(0, 300);
+    const one = found.length === 1;
+    const noun = g === 'f' ? (one ? 'woman' : 'women') : g === 'm' ? (one ? 'man' : 'men') : (one ? 'person' : 'people');
+    const what = [noun, cc ? `from ${countryName(cc)}` : '', q ? `matching “${$('sName').value.trim()}”` : ''].filter(Boolean).join(' ');
+    $('sHead').hidden = false;
+    $('sHead').textContent = found.length ? `${found.length}${found.length === 300 ? '+' : ''} ${what} online` : 'No matches online right now. Try another name, gender or country.';
+    $('sResults').innerHTML = found.map(u => `<div class="crow ${u.g}" data-uid="${u.id}">${avatar(u)}
+      <div class="info"><div class="nm">${esc(u.name)}${vb(u)}</div><div class="pv">${esc(subLine(u))}</div></div>${flagImg(u)}</div>`).join('');
+  }
+  $('searchForm').addEventListener('submit', e => { e.preventDefault(); runSearch(); });
+  $('sResults').addEventListener('click', e => { const r = e.target.closest('[data-uid]'); if (r) openChat(+r.dataset.uid); });
 
   // ---------------- profile card at the top of a chat with a registered user ----------------
   const profileCache = new Map();

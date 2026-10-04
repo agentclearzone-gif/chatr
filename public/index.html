@@ -120,6 +120,7 @@
       <button data-pane="rooms"><svg viewBox="0 0 24 24"><path d="M9 3 7 21M17 3l-2 18M3.5 8.5h17M3 15.5h17"/></svg><span>Rooms</span><b class="nb" id="nbRooms" hidden></b></button>
       <button data-pane="inbox"><svg viewBox="0 0 24 24"><path d="M3.5 13.5 6 5.5h12l2.5 8v5a1.5 1.5 0 0 1-1.5 1.5H5a1.5 1.5 0 0 1-1.5-1.5z"/><path d="M3.5 13.5H8l1.5 2.5h5l1.5-2.5h4.5"/></svg><span>Inbox</span><b class="nb" id="nbInbox" hidden></b></button>
       <button data-pane="history"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg><span>History</span></button>
+      <button data-pane="search"><svg viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5 21 21"/></svg><span>Search</span></button>
     </nav>
 
     <div class="pane" id="pane-people">
@@ -140,6 +141,20 @@
     <div class="pane" id="pane-inbox" hidden>
       <p class="pane-note">Messages people have sent you during this visit.</p>
       <div class="clist" id="inboxList"></div>
+    </div>
+    <div class="pane" id="pane-search" hidden>
+      <form class="search-form" id="searchForm" autocomplete="off">
+        <input id="sName" maxlength="16" placeholder="Username" aria-label="Username">
+        <div class="sg" role="radiogroup" aria-label="Gender">
+          <label><input type="radio" name="sg" value="all" checked><span>All <svg class="gi" viewBox="0 0 24 24" aria-hidden="true"><circle cx="8.5" cy="9" r="4.5" class="f"/><path d="M8.5 13.5V20M6 17.5h5" class="f"/><circle cx="15.5" cy="13" r="4.5" class="m"/><path d="M18.7 9.8 22 6.5M19 6.5h3v3" class="m"/></svg></span></label>
+          <label><input type="radio" name="sg" value="f"><span>Female <i class="sg-av f"></i></span></label>
+          <label><input type="radio" name="sg" value="m"><span>Male <i class="sg-av m"></i></span></label>
+        </div>
+        <div class="s-sel"><select id="sCountry" aria-label="Country"><option value="">All Countries</option></select></div>
+        <button class="search-btn" type="submit">SEARCH!</button>
+      </form>
+      <div class="s-head" id="sHead" hidden></div>
+      <div class="clist" id="sResults"></div>
     </div>
     <div class="pane" id="pane-history" hidden>
       <p class="pane-note">Every chat from this visit, including people who have left. It's all deleted when you leave.</p>
