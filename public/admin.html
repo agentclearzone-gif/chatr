@@ -32,6 +32,7 @@
     <a href="#convos" data-view="convos">💬 Conversations <b id="navConvos"></b></a>
     <a href="#room" data-view="room"># Rooms <b id="navRooms"></b></a>
     <a href="#users" data-view="users">👥 Users <b id="navUsers"></b></a>
+    <a href="#accounts" data-view="accounts">👤 Accounts <b id="navAccounts"></b></a>
     <a href="#filter" data-view="filter">🚫 Word filter</a>
     <a href="#appearance" data-view="appearance">🎨 Appearance</a>
     <a href="#spam" data-view="spam">🛡️ Anti-spam</a>
@@ -98,7 +99,7 @@
 
     <!-- Main room -->
     <section class="view" id="v-room" hidden>
-      <header class="vh"><h1>Rooms</h1><span class="muted">Everyone lands in the first room without a password. Use ↑ ↓ to change the order.</span></header>
+      <header class="vh"><h1>Rooms</h1><span class="muted">Users start in 1-to-1 chat and join rooms from the Rooms tab. Use ↑ ↓ to set the order rooms are listed in.</span></header>
       <div class="grid2 top">
         <div class="panel">
           <div class="ph"><h2>All rooms</h2></div>
@@ -145,6 +146,23 @@
         <div class="table-wrap">
           <table class="tbl" id="userTable">
             <thead><tr><th>User</th><th>Location</th><th>IP</th><th class="num">Online for</th><th class="num">Msgs</th><th class="num">Chats</th><th class="num">Strikes</th><th></th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- Accounts (registered profiles) -->
+    <section class="view" id="v-accounts" hidden>
+      <header class="vh"><h1>Accounts</h1><span class="muted" id="acctCount"></span></header>
+      <div class="panel">
+        <div class="tools">
+          <input class="search" id="acctSearch" type="search" placeholder="Search username or bio">
+        </div>
+        <p class="muted" style="margin:0 0 10px">Registered profiles are optional — guests can chat without one. Remove photos or bios that break your rules, or delete an account (the user is removed from the chat).</p>
+        <div class="table-wrap">
+          <table class="tbl" id="acctTable">
+            <thead><tr><th>Profile</th><th>Details</th><th>Bio</th><th>Joined</th><th>Last login</th><th></th></tr></thead>
             <tbody></tbody>
           </table>
         </div>

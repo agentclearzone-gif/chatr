@@ -15,7 +15,13 @@
     f: '<svg viewBox="0 0 64 64" aria-hidden="true"><path fill="#fff" d="M32 13c-7.6 0-12.6 5.8-12.6 13.6 0 5.6 1 9.4-2.4 13.4 3.3 1.3 6.6 1.1 9-.4 1.8 1.2 3.8 1.8 6 1.8s4.2-.6 6-1.8c2.4 1.5 5.7 1.7 9 .4-3.4-4-2.4-7.8-2.4-13.4C44.6 18.8 39.6 13 32 13z"/><path fill="#fff" d="M10 64c0-11.5 9.8-18.5 22-18.5S54 52.5 54 64z"/></svg>',
     m: '<svg viewBox="0 0 64 64" aria-hidden="true"><circle fill="#fff" cx="32" cy="26" r="11.5"/><path fill="#fff" d="M10 64c0-11.5 9.8-18.5 22-18.5S54 52.5 54 64z"/></svg>',
   };
-  const avatar = g => `<div class="av ${g}">${AVATAR[g]}</div>`;
+  // a gender string, or a user (registered users with a photo get their picture)
+  const avatar = x => {
+    const g = typeof x === 'string' ? x : x.g;
+    if (typeof x === 'object' && x.photo) return `<div class="av ${g}"><img src="/avatar/${encodeURIComponent(x.name)}?v=${encodeURIComponent(x.photo)}" alt="" loading="lazy"></div>`;
+    return `<div class="av ${g}">${AVATAR[g]}</div>`;
+  };
+  const vb = u => (u && u.reg ? '<span class="vbadge" title="Registered profile">✓</span>' : '');
   const subLine = u => [u.age + ' Yrs', u.loc, countryName(u.cc)].filter(Boolean).join(', ');
   const flagImg = u => `<img class="flag" src="${flagUrl(u.cc)}" srcset="${flagSrcset(u.cc)}" alt="${esc(countryName(u.cc))}" title="${esc(countryName(u.cc))}" loading="lazy" width="40" height="30">`;
 
@@ -172,23 +178,53 @@
   }
   prepareCaptcha();
 
+  // ---------------- login modes: guest (default) · log in to a profile · create a profile ----------------
+  const MODE_BTN = { login: 'Log in', register: 'Create profile & chat' };
+  const guestBtnText = btnText;
+  function setMode(mode) {
+    $('loginForm').dataset.mode = mode;
+    btnText = MODE_BTN[mode] || guestBtnText; setBtn();
+    $('fPw').autocomplete = mode === 'register' ? 'new-password' : 'current-password';
+    $('loginErr').textContent = '';
+    store.set('chatr.mode', mode);
+  }
+  document.querySelector('.mode-links').addEventListener('click', e => {
+    const a = e.target.closest('[data-mode]'); if (!a) return;
+    e.preventDefault(); setMode(a.dataset.mode); (a.dataset.mode === 'guest' ? $('fName') : $('fName')).focus();
+  });
+  if (store.get('chatr.mode') === 'login') setMode('login');
+  let regPhoto = null;
+  $('fPhoto').addEventListener('change', async () => {
+    const f = $('fPhoto').files[0]; $('fPhoto').value = '';
+    if (!f) return;
+    try { regPhoto = await squarePhoto(f); $('fPhotoPrev').innerHTML = `<img src="${regPhoto}" alt="">`; } catch { toast('Could not read that photo'); }
+  });
+
   $('loginForm').addEventListener('submit', async e => {
     e.preventDefault();
-    const profile = {
-      name: $('fName').value.trim(),
-      g: (document.querySelector('input[name=g]:checked') || {}).value,
-      age: parseInt($('fAge').value, 10),
-      loc: $('stateField').hidden ? '' : stateSel.value,
-      cc: sel.value,
-    };
-    const err = !/^[A-Za-z0-9_]{3,16}$/.test(profile.name) ? 'Username must be 3–16 letters, numbers or _'
-      : !profile.g ? 'Please choose a gender'
-      : !(profile.age >= 18 && profile.age <= 99) ? 'You must be 18 or older'
-      : !profile.cc ? 'Please choose a country'
-      : !$('stateField').hidden && !profile.loc ? 'Please choose your state / region' : '';
+    const mode = $('loginForm').dataset.mode;
+    const name = $('fName').value.trim();
+    let profile, err = !/^[A-Za-z0-9_]{3,16}$/.test(name) ? 'Username must be 3–16 letters, numbers or _' : '';
+    if (mode === 'login') {
+      profile = { mode, name, pw: $('fPw').value };
+      if (!err && !profile.pw) err = 'Please enter your password';
+    } else {
+      profile = { name, g: (document.querySelector('input[name=g]:checked') || {}).value, age: parseInt($('fAge').value, 10),
+        loc: $('stateField').hidden ? '' : stateSel.value, cc: sel.value };
+      err = err || (!profile.g ? 'Please choose a gender'
+        : !(profile.age >= 18 && profile.age <= 99) ? 'You must be 18 or older'
+        : !profile.cc ? 'Please choose a country'
+        : !$('stateField').hidden && !profile.loc ? 'Please choose your state / region' : '');
+      if (mode === 'register') {
+        Object.assign(profile, { mode, pw: $('fPw').value, bio: $('fBio').value.trim(), photo: regPhoto || undefined });
+        if (!err && profile.pw.length < 8) err = 'Choose a password of at least 8 characters';
+      }
+    }
     $('loginErr').textContent = err;
     if (err) return;
-    store.set('chatr.profile', profile);
+    // remember the form for next time (never the password)
+    const { pw, photo, bio, mode: _m, ...remember } = profile;
+    store.set('chatr.profile', { ...(store.get('chatr.profile') || {}), ...remember });
     $('loginBtn').disabled = true;
     setBtn('Verifying…');
     let cap;
@@ -216,7 +252,7 @@
     ws.onopen = () => ws.send(JSON.stringify({ t: 'join', ...profile, dev, cap, hp: $('fWebsite').value }));
     ws.onmessage = ev => {
       const m = JSON.parse(ev.data);
-      if (m.t === 'welcome') { joined = true; onWelcome(m); return; }
+      if (m.t === 'welcome') { joined = true; $('fPw').value = ''; regPhoto = null; $('fPhotoPrev').textContent = '📷'; onWelcome(m); return; }
       if (m.t === 'err' && m.join) {
         if (m.code === 'captcha') {
           prepareCaptcha(); // that answer is used up
@@ -227,6 +263,7 @@
           }
         }
         $('loginErr').textContent = m.e; ws.close();
+        if (m.code === 'registered') setMode('login');
         return;
       }
       if (joined) onMessage(m);
@@ -236,7 +273,7 @@
       S.ws = null;
       $('loginBtn').disabled = false;
       setBtn();
-      if (joined) resetToLogin(S.closeReason || 'You were disconnected. Your chat history has been deleted.');
+      if (joined) { $('fPw').value = ''; resetToLogin(S.closeReason || 'You were disconnected. Your chat history has been deleted.'); }
       else if (!$('loginErr').textContent) $('loginErr').textContent = 'Could not connect. Please try again.';
     };
   }
@@ -247,7 +284,10 @@
     S.me = toUser(m.me);
     S.users.clear();
     for (const t of m.users) addUser(t);
-    $('meBox').innerHTML = `${avatar(S.me.g)}<div class="info"><div class="nm">${esc(S.me.name)}</div><div class="sub">${esc(subLine(S.me))}</div></div>`;
+    S.acct = m.acct || null;
+    store.set('chatr.mode', S.acct ? 'login' : 'guest'); // next visit: registered users get the log-in form
+    renderMe();
+    if (m.warn) setTimeout(() => toast(m.warn), 600);
     $('login').hidden = true;
     $('app').hidden = false;
     $('loginNotice').hidden = true;
@@ -257,7 +297,7 @@
     renderRooms();
     markDirty();
     openDefault();
-    if (isRoom(S.active)) sysMsg(S.active, `Welcome ${S.me.name}! Say hi, join other rooms, or tap someone to chat privately.`);
+    showPane('people');
   }
 
   // The first room the user is in, or an empty "pick something" state.
@@ -265,18 +305,19 @@
     const r = [...S.rooms.values()].find(x => x.joined);
     if (r) return openChat(roomKey(r.id));
     S.active = null;
-    $('peer').innerHTML = '<div class="info"><div class="nm">Welcome</div><div class="sub">Join a room or tap someone to chat</div></div>';
+    $('peer').innerHTML = '<div class="info"><div class="nm">1-to-1 chat</div><div class="sub">Private chats with one person at a time</div></div>';
     $('headActions').hidden = true; $('picBtn').hidden = true;
     $('composer').classList.add('disabled');
     $('liveNote').hidden = true;
     $('msgs').replaceChildren();
-    sysMsg(null, 'Pick a room on the left, or tap someone to start a private chat.');
-    renderRooms(); renderList(true);
+    sysMsg(null, 'Tap someone in People to start a private chat, or open Rooms to join a group chat.');
+    renderRooms(); renderList(true); schedulePanes();
   }
 
   function resetToLogin(notice) {
     // Everything lives in memory only; drop it all.
-    S.users.clear(); S.convos.clear(); S.rooms.clear(); S.active = null; S.joiningRoom = null; S.pendingAcks.clear();
+    S.users.clear(); S.convos.clear(); S.rooms.clear(); S.active = null; S.joiningRoom = null; S.pendingAcks.clear(); S.acct = null;
+    if ($('profDlg').open) $('profDlg').close();
     S.me = null; S.view = [];
     $('msgs').innerHTML = '';
     document.body.classList.remove('chat-open');
@@ -295,7 +336,7 @@
     resetToLogin('You left the chat. All messages were deleted.');
   };
 
-  const toUser = t => ({ id: t[0], name: t[1], g: t[2], age: t[3], loc: t[4], cc: t[5] });
+  const toUser = t => ({ id: t[0], name: t[1], g: t[2], age: t[3], loc: t[4], cc: t[5], reg: t[6] === 1, photo: t[7] || 0 });
   function addUser(t) {
     if (S.users.has(t[0]) || (S.me && t[0] === S.me.id)) return;
     const u = toUser(t); u.seq = ++S.seq;
@@ -377,6 +418,20 @@
       case 'draft': if (S.active === m.f) showDraft(m.x); break;
       case 'err': toast(m.e); break;
       case 'kicked': S.closeReason = m.e; break;
+      case 'uu': { // someone's profile changed (photo, details, registered)
+        const nu = toUser(m.u);
+        if (S.me && nu.id === S.me.id) { S.me = nu; renderMe(); break; }
+        const old = S.users.get(nu.id);
+        if (!old) break;
+        nu.seq = old.seq;
+        S.users.set(nu.id, nu);
+        const c = S.convos.get(nu.id);
+        if (c) c.peer = { ...nu };
+        markDirty(); schedulePanes();
+        if (S.active === nu.id) renderPeer();
+        break;
+      }
+      case 'acct': onAccountReply(m); break;
     }
   }
 
@@ -384,16 +439,16 @@
     const u = S.users.get(id);
     if (!u) return;
     S.users.delete(id);
-    if (S.convos.has(id)) {
-      S.convos.delete(id);   // history is deleted as soon as the peer disconnects
+    const c = S.convos.get(id);
+    if (c) {
+      // keep the conversation in History (read-only) until *you* leave; nothing is kept after that
+      c.gone = true; c.peer = { ...u };
       if (S.active === id) {
-        hideDraft();
-        $('msgs').innerHTML = '';
-        sysMsg(null, `${u.name} has left. This chat has been deleted.`);
-        $('composer').classList.add('disabled');
-        $('headActions').hidden = true;
+        hideDraft(); hideTyping();
+        sysMsg(null, `${u.name} has left. You can still read this chat until you leave.`);
+        renderPeer(); renderLiveNote();
       }
-      updateTitle();
+      schedulePanes();
     }
   }
 
@@ -401,7 +456,7 @@
   function convo(id) {
     if (isRoom(id)) return roomOf(id) || { msgs: [], unread: 0 };
     let c = S.convos.get(id);
-    if (!c) { c = { msgs: [], unread: 0, last: 0 }; S.convos.set(id, c); }
+    if (!c) { c = { msgs: [], unread: 0, last: 0, lastIn: 0, peer: { ...S.users.get(id) }, gone: false }; S.convos.set(id, c); }
     return c;
   }
 
@@ -410,7 +465,7 @@
     c.msgs.push(msg);
     const cap = isRoom(target) ? MAX_ROOM : MAX_PM;
     if (c.msgs.length > cap) c.msgs.splice(0, c.msgs.length - cap);
-    if (!isRoom(target)) { c.last = Date.now(); markDirty(); }
+    if (!isRoom(target)) { c.last = Date.now(); if (!msg.me) c.lastIn = c.last; markDirty(); schedulePanes(); }
     const visible = S.active === target && !document.hidden && ($('app').offsetParent !== null) &&
       (window.innerWidth > 720 || document.body.classList.contains('chat-open'));
     if (S.active === target) appendMsgEl(msg, target);
@@ -432,6 +487,8 @@
     if (isRoom(target) && !msg.me) {
       const who = document.createElement('div');
       who.className = 'who ' + msg.g; who.textContent = msg.name; who.dataset.uid = msg.from;
+      const sender = S.users.get(msg.from);
+      if (sender && sender.reg) who.insertAdjacentHTML('beforeend', vb(sender));
       el.appendChild(who);
     }
     const b = document.createElement('div');
@@ -476,7 +533,7 @@
       const r = roomOf(target);
       if (!r) return;
       if (!r.joined) return requestJoin(r);
-    } else if (!S.users.has(target)) return;
+    } else if (!S.users.has(target) && !S.convos.has(target)) return; // left, and no chat to show
     if (S.draftTo && S.draftTo !== target) stopSharingDraft();
     S.active = target;
     hideTyping();
@@ -490,13 +547,16 @@
     const frag = document.createDocumentFragment();
     for (const m of c.msgs) { m.el = msgEl(m, target); frag.appendChild(m.el); }
     box.replaceChildren(frag);
-    if (!isRoom(target) && !c.msgs.length) sysMsg(null, 'Private chat. Messages disappear when either of you leaves.');
+    if (!isRoom(target)) showProfileCard(target);
+    if (!isRoom(target) && !c.msgs.length) sysMsg(null, 'Private chat. Messages are deleted when you leave.');
+    if (!isRoom(target) && c.gone) sysMsg(null, `${c.peer.name} has left. You can still read this chat until you leave.`);
     box.scrollTop = box.scrollHeight;
     document.body.classList.add('chat-open');
     updateBadges(target);
     renderList(true);
     renderRooms();
-    if (window.innerWidth > 720) $('text').focus();
+    schedulePanes();
+    if (window.innerWidth > 720 && !$('composer').classList.contains('disabled')) $('text').focus();
   }
 
   // Chat header: the room (name, lock, members) or the person you're talking to.
@@ -508,12 +568,17 @@
       peer.innerHTML = `<div class="av room">#</div><div class="info"><div class="nm">${esc(r.name)}${r.locked ? ' <span class="lock" title="Password protected">🔒</span>' : ''}</div>` +
         `<div class="sub">${r.count} ${r.count === 1 ? 'person' : 'people'} here${r.chat === false ? ' · 🔇 chat off' : ''}${r.desc ? ' · ' + esc(r.desc) : ''}</div></div>`;
     } else {
-      const u = S.users.get(target);
-      peer.innerHTML = `${avatar(u.g)}<div class="info"><div class="nm">${esc(u.name)}</div><div class="sub">${esc(subLine(u))}</div></div>${flagImg(u)}`;
+      const c = S.convos.get(target);
+      const u = S.users.get(target) || (c && c.peer);
+      const gone = !S.users.has(target);
+      peer.innerHTML = `${avatar(u)}<div class="info"><div class="nm">${esc(u.name)}${vb(u)}</div><div class="sub">${gone ? 'Left the chat' : esc(subLine(u))}</div></div>${flagImg(u)}`;
     }
-    $('picBtn').hidden = inRoom;
+    const gone = !inRoom && !S.users.has(target);
+    $('picBtn').hidden = inRoom || gone;
     $('headActions').hidden = false;
-    $('blockBtn').hidden = $('closeBtn').hidden = inRoom;
+    $('blockBtn').hidden = inRoom || gone;
+    $('closeBtn').hidden = inRoom;
+    $('closeBtn').title = 'Delete this chat';
     $('leaveRoomBtn').hidden = !inRoom;
   }
 
@@ -569,6 +634,7 @@
     S.convos.delete(id);
     markDirty();
     updateTitle();
+    schedulePanes();
     openDefault();
     if (window.innerWidth <= 720) document.body.classList.remove('chat-open');
   };
@@ -676,6 +742,13 @@
       note.hidden = !off;
       if (r && r.joined) $('composer').classList.toggle('disabled', off);
       if (off) note.innerHTML = '🔇 Chatting is turned off in this room. You can still message people privately.';
+      return;
+    }
+    const c = S.convos.get(S.active);
+    if (c && c.gone) {
+      note.hidden = false;
+      note.textContent = `${c.peer.name} has left — this chat is read-only. It's deleted when you leave.`;
+      $('composer').classList.add('disabled');
       return;
     }
     const u = S.users.get(S.active);
@@ -825,7 +898,7 @@
       const c = S.convos.get(u.id);
       const unread = c && c.unread ? `<span class="badge">${c.unread > 99 ? '99+' : c.unread}</span>` : '';
       html += `<div class="row ${u.g}${S.active === u.id ? ' sel' : ''}" data-id="${u.id}" style="transform:translateY(${i * RH}px)">` +
-        `${avatar(u.g)}<div class="info"><div class="nm">${esc(u.name)}</div><div class="sub">${esc(subLine(u))}</div></div>${unread}${flagImg(u)}</div>`;
+        `${avatar(u)}<div class="info"><div class="nm">${esc(u.name)}${vb(u)}</div><div class="sub">${esc(subLine(u))}</div></div>${unread}${flagImg(u)}</div>`;
     }
     if (!n) html = `<div class="empty">${S.q || S.filter !== 'all' ? 'No one matches.' : 'No one else is online yet.'}</div>`;
     // keep the spacer, replace rows
@@ -847,6 +920,7 @@
   // ---------------- badges / title ----------------
   function updateBadges(target) {
     if (isRoom(target)) renderRooms(); else markDirty();
+    schedulePanes();
     updateTitle();
   }
   function updateTitle() {
@@ -857,6 +931,160 @@
   document.addEventListener('visibilitychange', () => {
     if (!document.hidden && S.me && S.active != null) { const c = convo(S.active); if (c.unread) { c.unread = 0; updateBadges(S.active); } }
   });
+
+  // ---------------- me box (opens the profile dialog) ----------------
+  function renderMe() {
+    $('meBox').innerHTML = `${avatar(S.me)}<div class="info"><div class="nm">${esc(S.me.name)}${vb(S.me)}</div><div class="sub">${S.acct ? 'My profile' : 'Guest · tap to create a profile'}</div></div>`;
+    $('meBox').title = S.acct ? 'Edit your profile' : 'Create a profile to keep your name';
+  }
+  $('meBox').addEventListener('click', () => openProfile());
+
+  // ---------------- sidebar sections: People · Rooms · Inbox · History ----------------
+  let pane = 'people';
+  function showPane(name) {
+    pane = name;
+    for (const b of $('sideNav').children) b.classList.toggle('on', b.dataset.pane === name);
+    for (const n of ['people', 'rooms', 'inbox', 'history']) $('pane-' + n).hidden = n !== name;
+    if (name === 'people') renderList(true);
+    if (name === 'rooms') renderRooms();
+    renderPanes();
+  }
+  $('sideNav').addEventListener('click', e => { const b = e.target.closest('[data-pane]'); if (b) showPane(b.dataset.pane); });
+
+  let panesRaf = 0;
+  function schedulePanes() {
+    if (panesRaf) return;
+    panesRaf = requestAnimationFrame(() => { panesRaf = 0; renderPanes(); });
+  }
+  const ago = ts => { const s = Math.round((Date.now() - ts) / 1000); return s < 60 ? 'now' : s < 3600 ? Math.round(s / 60) + 'm' : Math.round(s / 3600) + 'h'; };
+  const preview = m => (m.i ? '📷 Photo' : m.x || '');
+  function convoRow(id, c, text, meta, unread) {
+    const u = S.users.get(id) || c.peer;
+    return `<div class="crow${unread ? ' unread' : ''}${c.gone ? ' gone' : ''}${S.active === id ? ' sel' : ''}" data-uid="${id}">${avatar(u)}
+      <div class="info"><div class="nm">${esc(u.name)}${vb(u)}${c.gone ? ' <span class="tag-left">left</span>' : ''}</div><div class="pv">${esc(text)}</div></div>
+      <div class="side-meta"><span>${meta}</span>${unread ? `<span class="badge">${unread > 99 ? '99+' : unread}</span>` : ''}</div></div>`;
+  }
+  function renderPanes() {
+    if (!S.me) return;
+    const convos = [...S.convos.entries()];
+    // nav badges: unread private messages (Inbox) and unread room messages (Rooms)
+    const unreadPm = convos.reduce((n, [, c]) => n + c.unread, 0);
+    const unreadRooms = [...S.rooms.values()].reduce((n, r) => n + (r.joined ? r.unread : 0), 0);
+    for (const [id, n] of [['nbInbox', unreadPm], ['nbRooms', unreadRooms]]) { $(id).hidden = !n; $(id).textContent = n > 99 ? '99+' : n; }
+    if (pane === 'inbox') {
+      const rows = convos.filter(([, c]) => c.lastIn).sort((a, b) => b[1].lastIn - a[1].lastIn);
+      $('inboxList').innerHTML = rows.length ? rows.map(([id, c]) => {
+        const got = c.msgs.filter(m => !m.me);
+        return convoRow(id, c, preview(got[got.length - 1]), `${ago(c.lastIn)} · ${got.length} msg${got.length === 1 ? '' : 's'}`, c.unread);
+      }).join('') : '<div class="empty-pane">No messages yet.<br>When someone messages you, it shows up here.</div>';
+    }
+    if (pane === 'history') {
+      const rows = convos.filter(([, c]) => c.msgs.length).sort((a, b) => b[1].last - a[1].last);
+      $('historyList').innerHTML = rows.length ? rows.map(([id, c]) => {
+        const last = c.msgs[c.msgs.length - 1];
+        return convoRow(id, c, (last.me ? 'You: ' : '') + preview(last), ago(c.last), c.unread);
+      }).join('') : '<div class="empty-pane">No chats yet in this visit.</div>';
+    }
+  }
+  for (const id of ['inboxList', 'historyList']) $(id).addEventListener('click', e => { const r = e.target.closest('[data-uid]'); if (r) openChat(+r.dataset.uid); });
+  setInterval(() => { if (pane === 'inbox' || pane === 'history') renderPanes(); }, 30000); // refresh "5m ago"
+
+  // ---------------- profile card at the top of a chat with a registered user ----------------
+  const profileCache = new Map();
+  async function showProfileCard(id) {
+    const u = S.users.get(id) || (S.convos.get(id) || {}).peer;
+    if (!u || !u.reg) return;
+    let p = profileCache.get(u.name);
+    if (!p) {
+      try { p = await fetch('/api/profile/' + encodeURIComponent(u.name)).then(r => (r.ok ? r.json() : null)); } catch { p = null; }
+      if (!p) return;
+      profileCache.set(u.name, p); setTimeout(() => profileCache.delete(u.name), 60000);
+    }
+    if (S.active !== id) return;
+    const card = document.createElement('div');
+    card.className = 'prof-card';
+    card.innerHTML = `${avatar(u)}<div class="nm">${esc(u.name)}${vb(u)}</div><div class="sub">${esc(subLine(u))}</div>${p.bio ? `<div class="bio">“${esc(p.bio)}”</div>` : ''}`;
+    $('msgs').prepend(card);
+  }
+
+  // ---------------- profile dialog: create a profile (guests) or edit it ----------------
+  async function squarePhoto(file) { // centre-crop to a 256px JPEG
+    if (!/^image\//.test(file.type)) throw new Error('not an image');
+    const bmp = await createImageBitmap(file);
+    const side = Math.min(bmp.width, bmp.height), cv = document.createElement('canvas');
+    cv.width = cv.height = 256;
+    cv.getContext('2d').drawImage(bmp, (bmp.width - side) / 2, (bmp.height - side) / 2, side, side, 0, 0, 256, 256);
+    return cv.toDataURL('image/jpeg', 0.85);
+  }
+  let profPhoto = null, profRemovePhoto = false;
+  $('pAge').innerHTML = Array.from({ length: 82 }, (_, i) => `<option>${i + 18}</option>`).join('');
+  $('pCountry').innerHTML = $('fCountry').innerHTML;
+  async function fillStates(cc, preferred) {
+    let list = stateCache.get(cc);
+    if (!list) { try { list = (await fetch('/states?cc=' + cc).then(r => r.json())).states; stateCache.set(cc, list); } catch { list = []; } }
+    $('pStateWrap').hidden = !list.length;
+    $('pState').innerHTML = list.map(n => `<option>${esc(n)}</option>`).join('');
+    if (preferred && list.includes(preferred)) $('pState').value = preferred;
+  }
+  $('pCountry').addEventListener('change', () => fillStates($('pCountry').value));
+  function openProfile() {
+    const dlg = $('profDlg'), me = S.me;
+    dlg.dataset.kind = S.acct ? 'edit' : 'claim';
+    profPhoto = null; profRemovePhoto = false;
+    $('profErr').textContent = '';
+    $('pPhotoPrev').innerHTML = me.photo ? `<img src="/avatar/${encodeURIComponent(me.name)}?v=${encodeURIComponent(me.photo)}" alt="">` : '📷';
+    $('pPhotoRemove').hidden = !me.photo;
+    $('pBio').value = S.acct ? S.acct.bio || '' : '';
+    if (S.acct) {
+      $('profTitle').textContent = 'Your profile';
+      $('profIntro').textContent = 'Registered as ' + me.name + ' ✓';
+      $('pG').value = me.g; $('pAge').value = me.age; $('pCountry').value = me.cc; fillStates(me.cc, me.loc);
+      $('profSave').textContent = 'Save changes';
+    } else {
+      $('profTitle').textContent = 'Create a profile';
+      $('profIntro').textContent = `Keep the name “${me.name}” for next time: choose a password, and add a photo and bio if you like. You stay in the chat.`;
+      $('pNewPw').value = '';
+      $('profSave').textContent = 'Create profile';
+    }
+    dlg.showModal();
+  }
+  $('profClose').onclick = () => $('profDlg').close();
+  $('pPhoto').addEventListener('change', async () => {
+    const f = $('pPhoto').files[0]; $('pPhoto').value = '';
+    if (!f) return;
+    try { profPhoto = await squarePhoto(f); profRemovePhoto = false; $('pPhotoPrev').innerHTML = `<img src="${profPhoto}" alt="">`; $('pPhotoRemove').hidden = false; }
+    catch { $('profErr').textContent = 'Could not read that photo'; }
+  });
+  $('pPhotoRemove').onclick = () => { profPhoto = null; profRemovePhoto = true; $('pPhotoPrev').textContent = '📷'; $('pPhotoRemove').hidden = true; };
+  $('profForm').addEventListener('submit', e => {
+    e.preventDefault();
+    $('profErr').textContent = '';
+    if (!S.acct) {
+      if ($('pNewPw').value.length < 8) { $('profErr').textContent = 'Choose a password of at least 8 characters'; return; }
+      send({ t: 'claim', pw: $('pNewPw').value, bio: $('pBio').value.trim(), photo: profPhoto || undefined });
+    } else {
+      send({ t: 'profile', bio: $('pBio').value.trim(), g: $('pG').value, age: +$('pAge').value, cc: $('pCountry').value,
+        loc: $('pStateWrap').hidden ? '' : $('pState').value, photo: profPhoto || undefined, removePhoto: profRemovePhoto });
+    }
+    $('profSave').disabled = true;
+  });
+  $('pPwBtn').onclick = () => {
+    $('profErr').textContent = '';
+    if ($('pNext').value.length < 8) { $('profErr').textContent = 'The new password needs at least 8 characters'; return; }
+    send({ t: 'pwchange', cur: $('pCur').value, next: $('pNext').value });
+  };
+  function onAccountReply(m) {
+    $('profSave').disabled = false;
+    if (m.me) S.me = toUser(m.me);
+    S.acct = m.acct;
+    renderMe();
+    if (!m.ok) { $('profErr').textContent = m.e || 'Something went wrong'; return; }
+    if (m.op === 'pwchange') { $('pCur').value = $('pNext').value = ''; $('profErr').textContent = ''; toast('Password changed'); return; }
+    if ($('profDlg').open) $('profDlg').close();
+    if (m.op === 'claim') store.set('chatr.mode', 'login');
+    toast(m.op === 'claim' ? 'Profile created ✓ Log in with your name and password next time.' : 'Profile saved');
+    if (m.e) setTimeout(() => toast(m.e), 2900);
+  }
 
   // ---------------- live theme preview (Admin → Appearance shows this page in an iframe) ----------------
   if (window.parent !== window) {

@@ -72,7 +72,7 @@
   });
   $('logout').onclick = async () => { try { await api('/logout', { method: 'POST' }); } catch {} showLogin(); };
 
-  const VIEWS = ['overview', 'convos', 'room', 'users', 'filter', 'appearance', 'spam', 'bans'];
+  const VIEWS = ['overview', 'convos', 'room', 'users', 'accounts', 'filter', 'appearance', 'spam', 'bans'];
   let view = 'overview';
   function route() {
     const v = location.hash.slice(1).split('?')[0];
@@ -96,6 +96,7 @@
       else if (view === 'convos') await loadConvos();
       else if (view === 'room') await loadRoom();
       else if (view === 'users') await loadUsers();
+      else if (view === 'accounts') await loadAccounts();
       else if (view === 'filter') await loadFilter(entering);
       else if (view === 'appearance') { if (entering) await loadAppearance(); }
       else if (view === 'spam') await loadSpam(entering);
@@ -360,7 +361,7 @@
     // don't redraw under the admin's cursor while a row button is focused
     if (!$('roomTable').contains(document.activeElement)) {
       $('roomTable').tBodies[0].innerHTML = roomsData.length ? roomsData.map((r, i) => `<tr data-id="${esc(r.id)}">
-        <td><b>${esc(r.name)}</b>${i === roomsData.findIndex(x => !x.locked) ? ' <span class="tag" style="background:#eef4fc;color:#1c5fb0">Lobby</span>' : ''}${r.desc ? `<div class="muted">${esc(r.desc)}</div>` : ''}</td>
+        <td><b>${esc(r.name)}</b>${r.desc ? `<div class="muted">${esc(r.desc)}</div>` : ''}</td>
         <td>${r.locked ? '🔒 Password' : 'Open'}</td>
         <td><button class="btn sm ${r.chat ? 'ghost' : 'outline-danger'}" data-chat title="${r.chat ? 'Everyone can send messages. Click to turn chat off.' : 'Nobody can post. Click to turn chat on.'}">${r.chat ? '💬 On' : '🔇 Off'}</button></td>
         <td class="num"><b>${fmt(r.members)}</b></td>
@@ -467,7 +468,7 @@
     $('usersCount').textContent = `${fmt(d.total)} matching${d.total > d.users.length ? ` · showing newest ${d.users.length}` : ''}`;
     const now = Date.now();
     $('userTable').tBodies[0].innerHTML = d.users.length ? d.users.map(u => `<tr>
-      <td><span class="who"><i class="dot ${u.g}"></i>${esc(u.name)} <span class="muted">${u.age}</span></span></td>
+      <td><span class="who"><i class="dot ${u.g}"></i>${esc(u.name)}${u.reg ? ' ✓' : ''} <span class="muted">${u.age}</span></span></td>
       <td><span class="cty">${flag(u.cc)}${esc([u.loc, cname(u.cc)].filter(Boolean).join(', '))}</span></td>
       <td class="muted"><span class="cty">${u.ipcc ? `<span data-tip="IP location: ${esc(cname(u.ipcc))}">${flag(u.ipcc)}</span>` : ''}${esc(u.ip)}${u.ipcc && u.ipcc !== u.cc ? ' <span class="tag mask" data-tip="Chosen country differs from IP location">≠ IP</span>' : ''}</span></td>
       <td class="num">${dur(now - u.joined)}</td>
@@ -481,6 +482,32 @@
   $('userSearch').addEventListener('input', () => { clearTimeout(userQ); userQ = setTimeout(() => refresh(), 250); });
   $('userCountry').addEventListener('change', () => refresh());
   $('userGender').addEventListener('change', () => refresh());
+
+  // ================= Accounts =================
+  async function loadAccounts() {
+    if ($('acctTable').contains(document.activeElement)) return; // don't redraw under the cursor
+    const d = await api('/accounts?' + new URLSearchParams({ q: $('acctSearch').value.trim() }));
+    $('navAccounts').textContent = fmt(d.total);
+    $('acctCount').textContent = `${fmt(d.total)} registered profile${d.total === 1 ? '' : 's'}`;
+    $('acctTable').tBodies[0].innerHTML = d.accounts.length ? d.accounts.map(a => `<tr data-key="${esc(a.key)}">
+      <td><span class="who">${a.photoV ? `<img class="acct-ph" src="/avatar/${encodeURIComponent(a.name)}?v=${esc(a.photoV)}" alt="">` : `<i class="dot ${a.g}"></i>`}${esc(a.name)} ✓
+        ${a.online ? '<span class="tag" style="background:#e7f6ea;color:#1b7a2f">online</span>' : ''}</span></td>
+      <td class="muted">${a.age} · ${esc([a.loc, cname(a.cc)].filter(Boolean).join(', '))}</td>
+      <td style="max-width:280px">${a.bio ? esc(a.bio) : '<span class="muted">—</span>'}</td>
+      <td class="muted">${dtFmt.format(a.created)}</td>
+      <td class="muted">${dtFmt.format(a.lastLogin)}</td>
+      <td class="actions">${a.photoV ? '<button class="btn sm ghost" data-act="photo">Remove photo</button>' : ''}${a.bio ? '<button class="btn sm ghost" data-act="bio">Clear bio</button>' : ''}<button class="btn sm outline-danger" data-act="delete">Delete</button></td>
+    </tr>`).join('') : `<tr><td colspan="6" class="empty">${d.total ? 'No accounts match' : 'No registered profiles yet'}</td></tr>`;
+  }
+  let acctQ;
+  $('acctSearch').addEventListener('input', () => { clearTimeout(acctQ); acctQ = setTimeout(() => refresh(), 250); });
+  $('acctTable').addEventListener('click', async e => {
+    const b = e.target.closest('[data-act]'); if (!b) return;
+    const key = b.closest('tr').dataset.key, act = b.dataset.act;
+    const msg = { photo: `Remove ${key}'s profile photo?`, bio: `Clear ${key}'s bio?`, delete: `Delete the account “${key}”? Their profile is removed and, if online, they are taken out of the chat.` }[act];
+    if (!confirm(msg)) return;
+    try { await api(`/accounts/${key}/${act}`, { method: 'POST' }); toast('Done'); b.blur(); loadAccounts(); } catch (err) { toast(err.message); }
+  });
 
   // ================= Word filter =================
   let rules = [];

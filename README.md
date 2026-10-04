@@ -64,12 +64,28 @@ Everything an admin changes is kept in `store.js`: the word filter, bans, anti-s
 
 **Free PostgreSQL:** [Neon](https://neon.com) has a free plan that doesn't expire. Create a project, copy the connection string (it ends in `?sslmode=require`), and add it on Render as `DATABASE_URL`. Render's own free PostgreSQL also works, but it is deleted after 30 days.
 
+## How users chat
+
+- **1-to-1 mode by default:** after logging in, users aren't in any room. They tap someone in **People** to chat privately, and join group rooms from the **Rooms** tab if they want.
+- **Sidebar tabs:** **People** (search plus an **All / ♀ Female / ♂ Male** filter) · **Rooms** · **Inbox** · **History**, with unread badges.
+- **Inbox:** everyone who has messaged you this visit, newest first, with how many messages they sent, the last one, and unread ones highlighted.
+- **History:** every chat from this visit, including people who have left. Those chats become read-only and are marked "left". Everything is deleted from the browser when *you* leave. Chats are never stored on the server, apart from the live moderation copy, which is deleted when either person leaves.
+
+## Profiles (optional)
+
+Guests can chat without signing up. On the login screen users can also **Log in** or **Create a profile**. Guests can create a profile mid-chat by tapping their name.
+- A profile gives a **reserved username + password**, **saved details** (gender, age, country, state), an optional **photo** (cropped to 256 px) and **bio** (160 characters, word-filtered), and a **✓** badge next to their name. Others see the bio on a profile card when they open a chat with them.
+- Users edit their profile and change their password by tapping their name.
+- **Security:** passwords are salted scrypt hashes. Logging in to a username that doesn't exist takes as long as a wrong password. 8 wrong passwords per IP means a 15-minute wait. At most 3 new profiles per IP per hour, and sign-ups need the bot check. A profile can't be logged in twice at once, and guests can't use a registered name.
+- **Storage:** the `chat_accounts` table (PostgreSQL) or `data/accounts.json` plus `data/avatars/`. **On Render's free plan, set `DATABASE_URL`, or all profiles are lost when the server restarts.**
+- **Admin → Accounts:** search profiles, remove a photo, clear a bio, or delete an account (if they're online, the user is removed from the chat).
+
 ## Rooms (Admin → # Rooms)
 
 - **Create, edit, reorder and delete rooms.** Each room has a name, an optional description and an optional **password**.
 - **Password-protected rooms** show a 🔒 in the room list. Users must enter the password to join; the server checks it. Passwords are stored as salted scrypt hashes in `data/rooms.json`, never in plain text. Password checks run off the main thread, so guessing can't slow the chat down. Wrong guesses are rate-limited (5 tries, then one every 10 seconds), and hammering past that counts as a spam strike.
 - **Changing a room's password** doesn't remove people already inside; it applies to new joiners. **Deleting a room** removes everyone in it, with a notice, and clears its messages from the moderation log.
-- **Everyone lands in the first room without a password**, so the order of rooms matters. Use ↑ ↓ to change it.
+- Users join rooms themselves from the Rooms tab (nobody is put in a room automatically). Use ↑ ↓ to set the order rooms are listed in.
 - Users see all rooms in the sidebar with live member counts and unread badges, can be in several rooms at once, and can leave any room. Room messages are sent **only to that room's members**, so extra rooms don't slow anything down at 7,000 users.
 - The room message log (moderation) has a room filter.
 - **Chat on/off per room:** the Chat column toggles whether anyone can post in that room. When it's off, people can still be in the room, but the message box is disabled with a notice. Private messages still work, and the server enforces it.

@@ -1,7 +1,7 @@
 'use strict';
 /*
- * Where admin data lives (word filter, bans, anti-spam settings, appearance + uploaded images, rooms).
- * Chats are never stored here.
+ * Where admin data lives (word filter, bans, anti-spam settings, appearance + uploaded images, rooms)
+ * and registered user profiles (accounts + profile photos). Chats are never stored here.
  *
  *  - DATABASE_URL set  → PostgreSQL (e.g. Neon, Supabase, Render Postgres). Survives restarts and redeploys.
  *  - otherwise         → JSON files in data/ (fine locally or on a server with a persistent disk).
@@ -25,9 +25,12 @@ class FileStore {
     this.kind = 'files';
     this.cache = new Map();
     this.blobs = new Map();
+    this.accounts = new Map(); // username (lowercase) -> account
+    this.accountsTimer = null;
   }
 
   async init() {
+    try { for (const [k, v] of Object.entries(JSON.parse(fs.readFileSync(path.join(this.dir, 'accounts.json'), 'utf8')))) this.accounts.set(k, v); } catch {}
     for (const key of KEYS) {
       try { this.cache.set(key, JSON.parse(fs.readFileSync(path.join(this.dir, key + '.json'), 'utf8'))); } catch {}
     }
@@ -64,7 +67,37 @@ class FileStore {
     for (const ext of Object.values(EXT)) try { fs.unlinkSync(path.join(this.dir, 'uploads', `${key}.${ext}`)); } catch {}
   }
 
-  async flush() {}
+  // ---- registered accounts (all in accounts.json, written at most once a second) + photos in avatars/
+  allAccounts() { return this.accounts; }
+  saveAccount(acct) { this.accounts.set(acct.key, acct); this.writeAccountsSoon(); }
+  deleteAccount(key) { this.accounts.delete(key); this.delPhoto(key); this.writeAccountsSoon(); }
+  writeAccountsSoon() {
+    if (this.accountsTimer) return;
+    this.accountsTimer = setTimeout(() => this.writeAccounts(), 1000);
+  }
+  writeAccounts() {
+    clearTimeout(this.accountsTimer); this.accountsTimer = null;
+    fs.mkdirSync(this.dir, { recursive: true });
+    const file = path.join(this.dir, 'accounts.json');
+    fs.writeFileSync(file + '.tmp', JSON.stringify(Object.fromEntries(this.accounts)));
+    fs.renameSync(file + '.tmp', file);
+  }
+  async getPhoto(key) {
+    for (const ext of Object.values(EXT)) {
+      try { return { type: TYPE[ext], data: await fs.promises.readFile(path.join(this.dir, 'avatars', `${key}.${ext}`)) }; } catch {}
+    }
+    return null;
+  }
+  setPhoto(key, data, type) {
+    this.delPhoto(key);
+    fs.mkdirSync(path.join(this.dir, 'avatars'), { recursive: true });
+    fs.writeFileSync(path.join(this.dir, 'avatars', `${key}.${EXT[type]}`), data);
+  }
+  delPhoto(key) {
+    for (const ext of Object.values(EXT)) try { fs.unlinkSync(path.join(this.dir, 'avatars', `${key}.${ext}`)); } catch {}
+  }
+
+  async flush() { if (this.accountsTimer) this.writeAccounts(); }
 }
 
 class PgStore {
@@ -75,6 +108,7 @@ class PgStore {
     this.blobs = new Map();
     this.queue = Promise.resolve();
     this.lastError = null;
+    this.accounts = new Map();
   }
 
   async init() {
@@ -95,6 +129,8 @@ class PgStore {
           key text PRIMARY KEY, value jsonb NOT NULL, updated_at timestamptz NOT NULL DEFAULT now())`);
         await this.pool.query(`CREATE TABLE IF NOT EXISTS chat_files (
           key text PRIMARY KEY, content_type text NOT NULL, data bytea NOT NULL, updated_at timestamptz NOT NULL DEFAULT now())`);
+        await this.pool.query(`CREATE TABLE IF NOT EXISTS chat_accounts (
+          username text PRIMARY KEY, data jsonb NOT NULL, photo bytea, photo_type text, updated_at timestamptz NOT NULL DEFAULT now())`);
         break;
       } catch (e) {
         if (attempt >= 6) throw new Error(`could not connect to the database: ${e.message}`);
@@ -104,6 +140,7 @@ class PgStore {
     }
     for (const row of (await this.pool.query('SELECT key, value FROM chat_settings')).rows) this.cache.set(row.key, row.value);
     for (const row of (await this.pool.query('SELECT key, content_type, data FROM chat_files')).rows) this.blobs.set(row.key, { type: row.content_type, data: row.data });
+    for (const row of (await this.pool.query('SELECT username, data FROM chat_accounts')).rows) this.accounts.set(row.username, row.data);
 
     // First connection: copy anything already saved in local files into the database.
     const files = new FileStore(DATA_DIR);
@@ -111,6 +148,14 @@ class PgStore {
     const copied = [];
     for (const key of KEYS) if (!this.cache.has(key) && files.get(key) !== undefined) { this.set(key, files.get(key)); copied.push(key); }
     for (const key of BLOBS) if (!this.blobs.has(key) && files.getBlob(key)) { const b = files.getBlob(key); this.setBlob(key, b.data, b.type); copied.push(key + ' image'); }
+    if (!this.accounts.size && files.allAccounts().size) {
+      for (const acct of files.allAccounts().values()) {
+        this.saveAccount(acct);
+        const photo = await files.getPhoto(acct.key);
+        if (photo) this.setPhoto(acct.key, photo.data, photo.type);
+      }
+      copied.push(`${files.allAccounts().size} accounts`);
+    }
     await this.flush();
     if (copied.length) console.log(`[store] copied local settings into the database: ${copied.join(', ')}`);
   }
@@ -148,6 +193,29 @@ class PgStore {
   delBlob(key) {
     this.blobs.delete(key);
     this.write(key + ' image', 'DELETE FROM chat_files WHERE key = $1', [key]);
+  }
+
+  // ---- registered accounts: profile data cached in memory, photos fetched on demand
+  allAccounts() { return this.accounts; }
+  saveAccount(acct) {
+    this.accounts.set(acct.key, acct);
+    this.write('account', `INSERT INTO chat_accounts (username, data, updated_at) VALUES ($1, $2, now())
+      ON CONFLICT (username) DO UPDATE SET data = EXCLUDED.data, updated_at = now()`, [acct.key, JSON.stringify(acct)]);
+  }
+  deleteAccount(key) {
+    this.accounts.delete(key);
+    this.write('account', 'DELETE FROM chat_accounts WHERE username = $1', [key]);
+  }
+  async getPhoto(key) {
+    await this.queue; // a photo saved a moment ago must be readable
+    const r = await this.pool.query('SELECT photo, photo_type FROM chat_accounts WHERE username = $1 AND photo IS NOT NULL', [key]);
+    return r.rows[0] ? { type: r.rows[0].photo_type, data: r.rows[0].photo } : null;
+  }
+  setPhoto(key, data, type) {
+    this.write('profile photo', 'UPDATE chat_accounts SET photo = $2, photo_type = $3, updated_at = now() WHERE username = $1', [key, data, type]);
+  }
+  delPhoto(key) {
+    this.write('profile photo', 'UPDATE chat_accounts SET photo = NULL, photo_type = NULL, updated_at = now() WHERE username = $1', [key]);
   }
 
   /** Wait for pending writes (used on shutdown). */

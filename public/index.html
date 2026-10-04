@@ -18,7 +18,7 @@
 <!-- ============ Login ============ -->
 <!-- {{…}} placeholders are filled by the server from the admin Appearance settings -->
 <section id="login" class="login {{patternClass}}">
-  <form id="loginForm" class="card" autocomplete="off" novalidate>
+  <form id="loginForm" class="card" data-mode="guest" autocomplete="off" novalidate>
     <div class="hero {{heroClass}}" id="heroImg" style="background-image:url('{{heroUrl}}')" aria-hidden="true"></div>
     <svg class="hero-edge {{heroClass}}" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"><path d="M18 0C34 4 36 30 52 48S80 66 100 76"/></svg>
     <svg class="card-swoosh" viewBox="0 0 200 60" preserveAspectRatio="none" aria-hidden="true"><path d="M0 58C70 56 150 40 200 2"/></svg>
@@ -38,8 +38,14 @@
       <label class="ctl float"><span>Username</span><input id="fName" maxlength="16" placeholder="e.g. Sarah20" required></label>
     </div>
 
+    <!-- profile login / registration only -->
+    <div class="frow acct-only">
+      <span class="ibadge" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="5" y="10.5" width="14" height="10" rx="2.5"/><path d="M8.5 10.5V7.5a3.5 3.5 0 0 1 7 0v3"/></svg></span>
+      <label class="ctl float"><span>Password</span><input id="fPw" type="password" maxlength="72" placeholder="At least 8 characters" autocomplete="current-password"></label>
+    </div>
+
     <!-- side by side on phones (saves a row), stacked on larger screens -->
-    <div class="duo">
+    <div class="duo not-login">
       <div class="field gender-field">
         <span class="lbl">Gender</span>
         <div class="seg" role="radiogroup" aria-label="Gender">
@@ -56,7 +62,7 @@
       </div>
     </div>
 
-    <div class="field">
+    <div class="field not-login">
       <label class="lbl" for="fCountry">Country</label>
       <div class="frow">
         <span class="ibadge" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3.3 3 14.7 0 18M12 3c-3 3.3-3 14.7 0 18"/></svg></span>
@@ -64,14 +70,20 @@
       </div>
     </div>
 
-    <div class="field" id="stateField">
+    <div class="field not-login" id="stateField">
       <label class="lbl" for="fState">State / Region</label>
       <div class="frow">
         <span class="ibadge" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 21s-7-6.2-7-11.5a7 7 0 0 1 14 0C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></svg></span>
         <div class="ctl select"><select id="fState" disabled><option value="">Select a country first</option></select></div>
       </div>
     </div>
-    <span class="geo-hint" id="geoHint" hidden></span>
+    <span class="geo-hint not-login" id="geoHint" hidden></span>
+
+    <!-- registration extras -->
+    <div class="reg-only reg-extra">
+      <label class="photo-pick" title="Add a profile photo"><input type="file" id="fPhoto" accept="image/*" hidden><span class="pp-img" id="fPhotoPrev">📷</span></label>
+      <label class="ctl float"><span>Bio <small>(optional)</small></span><input id="fBio" maxlength="160" placeholder="A few words about you"></label>
+    </div>
 
     <!-- honeypot: invisible to people, bots fill it in -->
     <div class="hp" aria-hidden="true"><label>Website <input id="fWebsite" name="website" tabindex="-1" autocomplete="off"></label></div>
@@ -83,6 +95,11 @@
       <span id="loginBtnText">{{buttonText}}</span>
       <svg class="bi" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
     </button>
+    <p class="mode-links">
+      <span data-show="guest">Have a profile? <a href="#" data-mode="login">Log in</a> · <a href="#" data-mode="register">Create a profile</a></span>
+      <span data-show="login">New here? <a href="#" data-mode="guest">Chat as a guest</a> · <a href="#" data-mode="register">Create a profile</a></span>
+      <span data-show="register">Have a profile? <a href="#" data-mode="login">Log in</a> · <a href="#" data-mode="guest">Chat as a guest</a></span>
+    </p>
     <p class="fine">By entering you confirm you are 18+.</p>
   </form>
   <!-- required by DB-IP's free license (CC BY 4.0): credit + link where location results are used -->
@@ -97,20 +114,37 @@
       <button class="icon-btn" id="soundBtn" aria-label="Message sound on" title="Message sound on">🔔</button>
       <button class="leave-btn" id="logoutBtn" title="Leave chat and delete all messages">Leave</button>
     </header>
-    <div class="side-tools">
-      <input id="search" type="search" placeholder="Search name or location">
-      <div class="tabs" id="tabs">
-        <button data-f="all" class="on">All <b id="cAll">0</b></button>
-        <button data-f="f">Female <b id="cF">0</b></button>
-        <button data-f="m">Male <b id="cM">0</b></button>
+    <span id="roomsCount" hidden></span>
+    <nav class="side-nav" id="sideNav" aria-label="Sections">
+      <button data-pane="people" class="on"><svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c0-3.6 2.9-6 6.5-6s6.5 2.4 6.5 6"/><path d="M16 4.6a3.5 3.5 0 0 1 0 6.8M18 14.3c2.1.7 3.5 2.6 3.5 5.7"/></svg><span>People</span></button>
+      <button data-pane="rooms"><svg viewBox="0 0 24 24"><path d="M9 3 7 21M17 3l-2 18M3.5 8.5h17M3 15.5h17"/></svg><span>Rooms</span><b class="nb" id="nbRooms" hidden></b></button>
+      <button data-pane="inbox"><svg viewBox="0 0 24 24"><path d="M3.5 13.5 6 5.5h12l2.5 8v5a1.5 1.5 0 0 1-1.5 1.5H5a1.5 1.5 0 0 1-1.5-1.5z"/><path d="M3.5 13.5H8l1.5 2.5h5l1.5-2.5h4.5"/></svg><span>Inbox</span><b class="nb" id="nbInbox" hidden></b></button>
+      <button data-pane="history"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg><span>History</span></button>
+    </nav>
+
+    <div class="pane" id="pane-people">
+      <div class="side-tools">
+        <input id="search" type="search" placeholder="Search name or location">
+        <div class="tabs gender-filter" id="tabs" role="group" aria-label="Show">
+          <button data-f="all" class="on">All <b id="cAll">0</b></button>
+          <button data-f="f">♀ Female <b id="cF">0</b></button>
+          <button data-f="m">♂ Male <b id="cM">0</b></button>
+        </div>
       </div>
+      <div class="list" id="list"><div class="spacer" id="spacer"></div></div>
     </div>
-    <div class="rooms">
-      <div class="rooms-head">Rooms <b id="roomsCount"></b></div>
+    <div class="pane" id="pane-rooms" hidden>
+      <p class="pane-note">Join a room to chat with everyone in it. Your private chats keep working.</p>
       <div class="room-list" id="roomList"></div>
     </div>
-    <div class="people-head">People online</div>
-    <div class="list" id="list"><div class="spacer" id="spacer"></div></div>
+    <div class="pane" id="pane-inbox" hidden>
+      <p class="pane-note">Messages people have sent you during this visit.</p>
+      <div class="clist" id="inboxList"></div>
+    </div>
+    <div class="pane" id="pane-history" hidden>
+      <p class="pane-note">Every chat from this visit, including people who have left. It's all deleted when you leave.</p>
+      <div class="clist" id="historyList"></div>
+    </div>
   </aside>
 
   <section class="chat" id="chat">
@@ -136,6 +170,36 @@
     </form>
   </section>
 </main>
+
+<dialog class="pw-dlg prof-dlg" id="profDlg">
+  <form id="profForm" autocomplete="off">
+    <button type="button" class="dlg-x" id="profClose" aria-label="Close">✕</button>
+    <h3 id="profTitle">Your profile</h3>
+    <div class="prof-photo">
+      <label class="photo-pick big" title="Change photo"><input type="file" id="pPhoto" accept="image/*" hidden><span class="pp-img" id="pPhotoPrev"></span></label>
+      <button type="button" class="link-btn" id="pPhotoRemove" hidden>Remove photo</button>
+    </div>
+    <p class="prof-intro" id="profIntro"></p>
+    <div class="prof-fields">
+      <label class="pf">Bio <input id="pBio" maxlength="160" placeholder="A few words about you"></label>
+      <div class="pf-row edit-only">
+        <label class="pf">Gender <select id="pG"><option value="f">Female</option><option value="m">Male</option></select></label>
+        <label class="pf">Age <select id="pAge"></select></label>
+      </div>
+      <label class="pf edit-only">Country <select id="pCountry"></select></label>
+      <label class="pf edit-only" id="pStateWrap">State / Region <select id="pState"></select></label>
+      <label class="pf claim-only">Choose a password <input id="pNewPw" type="password" maxlength="72" placeholder="At least 8 characters" autocomplete="new-password"></label>
+    </div>
+    <div class="err" id="profErr"></div>
+    <button type="submit" class="pw-join" id="profSave">Save</button>
+    <details class="edit-only pw-change">
+      <summary>Change password</summary>
+      <label class="pf">Current password <input id="pCur" type="password" maxlength="72" autocomplete="current-password"></label>
+      <label class="pf">New password <input id="pNext" type="password" maxlength="72" placeholder="At least 8 characters" autocomplete="new-password"></label>
+      <button type="button" class="leave-btn" id="pPwBtn">Change password</button>
+    </details>
+  </form>
+</dialog>
 
 <dialog class="pw-dlg" id="roomPwDlg">
   <form id="roomPwForm" autocomplete="off">

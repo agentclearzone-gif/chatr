@@ -25,6 +25,7 @@ const Settings = require('./settings.js');
 const Captcha = require('./captcha.js');
 const AntiSpam = require('./antispam.js');
 const Rooms = require('./rooms.js');
+const Accounts = require('./accounts.js');
 const store = require('./store.js'); // already loaded by server.js before this file runs
 
 const PORT = +process.env.PORT || 3000;
@@ -152,6 +153,7 @@ const stats = {
   },
 };
 const filter = new WordFilter(store);
+const accounts = new Accounts(store, filter);
 const bans = new Bans(store);
 const settings = new Settings(store);
 const rooms = new Rooms(store);
@@ -180,6 +182,31 @@ const adminApi = createAdminApi({
   users, convos, roomLog, stats, filter, bans, settings, captcha, clientIp, dataDir: DATA_DIR, storage: () => store.describe(),
   theme, themeInfo: () => ({ theme: theme.all(), presets: Theme.PRESETS, defaultLogo: Theme.DEFAULT_LOGO, heroDefault: HERO_DEFAULT, ...themeAssets(theme.all()) }),
   onThemeChange: renderIndex,
+  accounts: {
+    list(q) {
+      const s = (q || '').toLowerCase();
+      const online = new Map([...users.values()].filter(u => u.acct).map(u => [u.acct, u]));
+      return accounts.list().filter(a => !s || a.key.includes(s) || (a.bio || '').toLowerCase().includes(s))
+        .sort((a, b) => b.lastLogin - a.lastLogin).slice(0, 500)
+        .map(a => ({ key: a.key, name: a.name, g: a.g, age: a.age, loc: a.loc, cc: a.cc, bio: a.bio || '', photoV: a.photoV,
+          created: a.created, lastLogin: a.lastLogin, online: online.has(a.key) }));
+    },
+    total: () => accounts.count(),
+    moderate(key, action) {
+      const a = accounts.get(key);
+      if (!a) return false;
+      const u = [...users.values()].find(x => x.acct === a.key);
+      if (action === 'photo') accounts.removePhoto(a);
+      else if (action === 'bio') accounts.update(a, { bio: '' });
+      else if (action === 'delete') {
+        accounts.remove(a.key);
+        if (u) { u.acct = null; kickUser(u, 'Your profile was removed by a moderator.'); }
+        return true;
+      }
+      if (u) refreshUser(u);
+      return true;
+    },
+  },
   rooms: {
     list: () => rooms.list.map(r => ({ id: r.id, name: r.name, desc: r.desc, locked: !!r.pw, chat: r.chat !== false, created: r.created,
       members: (roomMembers.get(r.id) || EMPTY).size, messages: roomMsgCount.get(r.id) || 0 })),
@@ -244,6 +271,23 @@ const server = http.createServer((req, res) => {
       'cache-control': url.searchParams.has('v') ? 'public, max-age=31536000, immutable' : 'no-cache',
     });
     return res.end(img.data);
+  }
+  // registered users' profile photos and public profile info
+  const av = url.pathname.match(/^\/avatar\/([A-Za-z0-9_]{3,16})$/);
+  if (av) {
+    accounts.photo(av[1].toLowerCase()).then(p => {
+      if (!p) { res.writeHead(404); return res.end('Not found'); }
+      res.writeHead(200, { 'content-type': p.type, 'content-length': p.data.length, 'x-content-type-options': 'nosniff',
+        'cache-control': url.searchParams.has('v') ? 'public, max-age=31536000, immutable' : 'no-cache' });
+      res.end(p.data);
+    }, () => { res.writeHead(500); res.end(); });
+    return;
+  }
+  const pr = url.pathname.match(/^\/api\/profile\/([A-Za-z0-9_]{3,16})$/);
+  if (pr) {
+    const a = accounts.get(pr[1]);
+    res.writeHead(a ? 200 : 404, { 'content-type': 'application/json', 'cache-control': 'no-cache' });
+    return res.end(JSON.stringify(a ? { name: a.name, bio: a.bio || '', photoV: a.photoV, created: a.created } : { error: 'Not registered' }));
   }
   if (url.pathname === '/states') {
     const cc = (url.searchParams.get('cc') || '').toLowerCase();
@@ -412,6 +456,8 @@ function handle(ws, m) {
     }
     case 'rjoin':
       return roomJoinRequest(ws, u, m).catch(e => console.error('[rjoin]', e));
+    case 'claim': case 'profile': case 'pwchange':
+      return profileRequest(ws, u, m).catch(e => console.error('[profile]', e));
     case 'rleave': {
       if (typeof m.r === 'string') leaveRoom(u, m.r);
       return send(ws, { t: 'rleave', r: m.r });
@@ -559,70 +605,170 @@ function logRoom(entry) {
   if (roomLog.length > ROOM_LOG_SIZE) roomLog.splice(0, roomLog.length - ROOM_LOG_SIZE);
 }
 
-async function join(ws, m) {
-  if (ws.user || ws.joining) return;
-  const name = typeof m.name === 'string' ? m.name.trim() : '';
+// ---------- joining: guest, log in to a registered profile, or create a profile ----------
+const loginFails = new Map();   // ip -> { n, reset }  (failed profile logins)
+const registrations = new Map(); // ip -> { n, reset }  (profiles created)
+function limited(map, ip, max) { const e = map.get(ip); return !!e && e.reset > Date.now() && e.n >= max; }
+function bump(map, ip, ms) {
+  const now = Date.now();
+  let e = map.get(ip);
+  if (!e || e.reset < now) map.set(ip, e = { n: 0, reset: now + ms });
+  e.n++;
+}
+setInterval(() => { const now = Date.now(); for (const m of [loginFails, registrations]) for (const [k, e] of m) if (e.reset < now) m.delete(k); }, 60000).unref();
+
+/** Gender, age, country and state from a join/profile message → { g, age, loc, cc } or { error } */
+function readProfile(m, ws) {
   const g = m.g === 'f' || m.g === 'm' ? m.g : null;
   const age = Number.isInteger(m.age) ? m.age : parseInt(m.age, 10);
   let cc = typeof m.cc === 'string' ? m.cc.toLowerCase() : '';
   if (GEO_LOCK && ws.ipcc && COUNTRY_CODES.has(ws.ipcc)) cc = ws.ipcc;
   const loc = cleanText(m.loc, 60);   // state / region, from the country's list
-  const device = typeof m.dev === 'string' && DEVICE_RE.test(m.dev) ? m.dev : null;
+  if (!g) return { error: 'Please choose a gender' };
+  if (!(age >= 18 && age <= 99)) return { error: 'You must be 18 or older' };
+  if (!COUNTRY_CODES.has(cc)) return { error: 'Please choose a country' };
+  if (!validState(cc, loc)) return { error: (Geo.STATES[cc] || []).length ? 'Please choose your state' : 'Invalid state' };
+  return { g, age, loc, cc };
+}
 
-  let e = null;
+/** What everyone's user list gets: [id, name, gender, age, state, country, registered, photo version] */
+function tupleOf(u) {
+  const acct = u.acct && accounts.get(u.acct);
+  return [u.id, u.name, u.g, u.age, u.loc, u.cc, acct ? 1 : 0, (acct && acct.photoV) || 0];
+}
+function myAccount(u) {
+  const a = u.acct && accounts.get(u.acct);
+  return a ? { name: a.name, bio: a.bio || '', photoV: a.photoV, created: a.created } : null;
+}
+/** Re-send someone's list entry to everyone after their profile changed. */
+function refreshUser(u) {
+  u.tuple = tupleOf(u);
+  snapshot = null;
+  broadcast(JSON.stringify({ t: 'uu', u: u.tuple }));
+}
+
+async function join(ws, m) {
+  if (ws.user || ws.joining) return;
+  const mode = m.mode === 'login' || m.mode === 'register' ? m.mode : 'guest';
+  const name = typeof m.name === 'string' ? m.name.trim() : '';
+  const device = typeof m.dev === 'string' && DEVICE_RE.test(m.dev) ? m.dev : null;
+  const fail = (e, extra) => send(ws, { t: 'err', e, join: true, ...extra });
+
   const ban = bans.match(isLoopback(ws.ip) ? null : ws.ip, device);
-  if (ban) e = 'You are banned from this chat' + (ban.until ? ` until ${new Date(ban.until).toUTCString()}` : '') + '.';
-  else if (!NAME_RE.test(name)) e = 'Username must be 3–16 letters, numbers or _';
-  else if (!filter.nameAllowed(name)) e = 'That username is not allowed';
-  else if (!g) e = 'Please choose a gender';
-  else if (!(age >= 18 && age <= 99)) e = 'You must be 18 or older';
-  else if (!COUNTRY_CODES.has(cc)) e = 'Please choose a country';
-  else if (!validState(cc, loc)) e = (Geo.STATES[cc] || []).length ? 'Please choose your state' : 'Invalid state';
-  else if (names.has(name.toLowerCase())) e = 'That username is taken right now';
-  else if (users.size >= MAX_USERS) e = 'The chat is full, please try again shortly';
-  if (e) return send(ws, { t: 'err', e, join: true });
+  if (ban) return fail('You are banned from this chat' + (ban.until ? ` until ${new Date(ban.until).toUTCString()}` : '') + '.');
+  if (!NAME_RE.test(name)) return fail('Username must be 3–16 letters, numbers or _');
+  if (users.size >= MAX_USERS) return fail('The chat is full, please try again shortly');
+
+  let profile = null;
+  if (mode !== 'login') {
+    if (!filter.nameAllowed(name)) return fail('That username is not allowed');
+    profile = readProfile(m, ws);
+    if (profile.error) return fail(profile.error);
+    if (accounts.get(name)) {
+      return fail(mode === 'register' ? 'That username is already registered. Log in instead, or choose another name.'
+        : 'That username belongs to a registered profile. Log in with its password, or choose another name.', { code: 'registered' });
+    }
+    if (names.has(name.toLowerCase())) return fail('That username is taken right now');
+  }
+  if (mode === 'register') {
+    try { accounts.checkPassword(m.pw); accounts.cleanBio(m.bio); } catch (e) { return fail(e.message); }
+    if (!isLoopback(ws.ip) && limited(registrations, ws.ip, 3)) return fail('Too many new profiles from your connection. Please try again in an hour.');
+  }
+  if (mode === 'login' && limited(loginFails, ws.ip, 8)) return fail('Too many wrong passwords. Please wait 15 minutes and try again.');
 
   // Bots: a hidden form field people never see or fill in, then the bot check.
   if (typeof m.hp === 'string' && m.hp !== '') {
     stats.spam.honeypot++;
-    return send(ws, { t: 'err', e: 'Could not join. Please reload the page and try again.', join: true, code: 'captcha' });
+    return fail('Could not join. Please reload the page and try again.', { code: 'captcha' });
   }
   ws.joining = true;
-  let human;
-  try { human = await captcha.verify(m.cap, ws.ip); } finally { ws.joining = false; }
-  if (!human) return send(ws, { t: 'err', e: 'Bot check failed. Please try again.', join: true, code: 'captcha' });
+  let acct = null, warn = null;
+  try {
+    if (!(await captcha.verify(m.cap, ws.ip))) return fail('Bot check failed. Please try again.', { code: 'captcha' });
+    if (mode === 'login') {
+      acct = await accounts.login(name, m.pw);
+      if (!acct) { bump(loginFails, ws.ip, 15 * 60000); return fail('Wrong username or password.'); }
+      loginFails.delete(ws.ip);
+      profile = { g: acct.g, age: acct.age, loc: acct.loc, cc: acct.cc };
+      if (GEO_LOCK && ws.ipcc && COUNTRY_CODES.has(ws.ipcc) && ws.ipcc !== acct.cc) profile = { ...profile, cc: ws.ipcc, loc: '' };
+    } else if (mode === 'register') {
+      try { acct = await accounts.register(name, m.pw, profile, m.bio); } catch (e) { return fail(e.message); }
+      bump(registrations, ws.ip, 3600000);
+      if (typeof m.photo === 'string' && m.photo) try { accounts.setPhoto(acct, m.photo); } catch (e) { warn = `Profile created, but the photo was not saved: ${e.message}`; }
+    }
+  } finally { ws.joining = false; }
   if (ws.readyState !== 1 || ws.user) return;
+  const display = acct ? acct.name : name;
   // re-check anything that could have changed while verifying
-  if (names.has(name.toLowerCase())) return send(ws, { t: 'err', e: 'That username is taken right now', join: true });
-  if (users.size >= MAX_USERS) return send(ws, { t: 'err', e: 'The chat is full, please try again shortly', join: true });
+  if (names.has(display.toLowerCase())) return fail(acct ? 'This profile is already logged in somewhere else.' : 'That username is taken right now');
+  if (users.size >= MAX_USERS) return fail('The chat is full, please try again shortly');
+  if (acct) accounts.touch(acct);
 
   clearTimeout(ws.joinTimer);
   const u = {
-    id: nextId++, name, g, age, loc, cc, ws, ip: ws.ip, ipcc: ws.ipcc, device, joined: Date.now(), msgCount: 0,
-    roomTimes: [], pmBucket: bucket(15), imgBucket: bucket(3), tyBucket: bucket(3), draftBucket: bucket(30), roomPwBucket: bucket(5),
+    id: nextId++, name: display, ...profile, ws, ip: ws.ip, ipcc: ws.ipcc, device, acct: acct ? acct.key : null, joined: Date.now(), msgCount: 0,
+    roomTimes: [], pmBucket: bucket(15), imgBucket: bucket(3), tyBucket: bucket(3), draftBucket: bucket(30), roomPwBucket: bucket(5), profileBucket: bucket(5),
     blocked: new Set(), convoKeys: new Set(), rooms: new Set(),
   };
-  u.tuple = [u.id, name, g, age, loc, cc];
+  u.tuple = tupleOf(u);
   antispam.init(u);
   ws.user = u;
 
   // Snapshot reflects the list as of its last rebuild; anything newer arrives in the next
   // batched delta (clients apply joins/leaves idempotently), so it is rebuilt at most once per tick.
+  // Nobody is put in a room: people start in 1-to-1 mode and join rooms themselves.
   if (snapshot === null) snapshot = JSON.stringify(Array.from(users.values(), x => x.tuple));
-  // Everyone lands in the first room without a password (admins control the order).
-  const lobby = rooms.list.find(r => !r.pw);
-  if (lobby) joinRoom(u, lobby);
-  ws.send('{"t":"welcome","live":' + settings.get('liveTyping') + ',"me":' + JSON.stringify(u.tuple) +
-    ',"rooms":' + JSON.stringify(rooms.publicList()) + ',"rc":' + JSON.stringify(roomCounts()) + ',"in":' + JSON.stringify([...u.rooms]) +
+  ws.send('{"t":"welcome","live":' + settings.get('liveTyping') + ',"me":' + JSON.stringify(u.tuple) + ',"acct":' + JSON.stringify(myAccount(u)) +
+    (warn ? ',"warn":' + JSON.stringify(warn) : '') +
+    ',"rooms":' + JSON.stringify(rooms.publicList()) + ',"rc":' + JSON.stringify(roomCounts()) + ',"in":[]' +
     ',"users":' + snapshot + '}');
 
   users.set(u.id, u);
-  names.add(name.toLowerCase());
+  names.add(display.toLowerCase());
   pendingJoins.push(u.tuple);
 
   stats.totalJoins++;
-  stats.countryJoins.set(cc, (stats.countryJoins.get(cc) || 0) + 1);
+  stats.countryJoins.set(u.cc, (stats.countryJoins.get(u.cc) || 0) + 1);
   if (users.size > stats.peak.n) stats.peak = { n: users.size, ts: Date.now() };
+}
+
+// ---------- profile management while online ----------
+async function profileRequest(ws, u, m) {
+  const reply = (ok, e) => send(ws, { t: 'acct', op: m.t, ok, e, acct: myAccount(u), me: u.tuple });
+  if (!allow(u.profileBucket, 0.1, 5)) return reply(false, 'Too many changes. Please wait a minute.');
+  if (m.t === 'claim') {
+    // a guest creates a profile for the name they're already using
+    if (u.acct) return reply(false, 'You already have a profile.');
+    if (accounts.get(u.name)) return reply(false, 'That username is already registered.');
+    if (!isLoopback(u.ip) && limited(registrations, u.ip, 3)) return reply(false, 'Too many new profiles from your connection. Please try again in an hour.');
+    let acct;
+    try { acct = await accounts.register(u.name, m.pw, { g: u.g, age: u.age, loc: u.loc, cc: u.cc }, m.bio); } catch (e) { return reply(false, e.message); }
+    bump(registrations, u.ip, 3600000);
+    u.acct = acct.key;
+    let warn;
+    if (typeof m.photo === 'string' && m.photo) try { accounts.setPhoto(acct, m.photo); } catch (e) { warn = e.message; }
+    refreshUser(u);
+    return reply(true, warn && `Profile created, but the photo was not saved: ${warn}`);
+  }
+  const acct = u.acct && accounts.get(u.acct);
+  if (!acct) return reply(false, 'Create a profile first.');
+  try {
+    if (m.t === 'profile') {
+      const p = readProfile(m, ws);
+      if (p.error) return reply(false, p.error);
+      const bio = accounts.cleanBio(m.bio);
+      accounts.update(acct, { ...p, bio });
+      Object.assign(u, p);
+      if (m.removePhoto) accounts.removePhoto(acct);
+      else if (typeof m.photo === 'string' && m.photo) accounts.setPhoto(acct, m.photo);
+      refreshUser(u);
+      return reply(true);
+    }
+    if (m.t === 'pwchange') {
+      await accounts.changePassword(acct, String(m.cur || ''), m.next);
+      return reply(true);
+    }
+  } catch (e) { return reply(false, e.message); }
 }
 
 function leave(ws) {

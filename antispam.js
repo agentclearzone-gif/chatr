@@ -70,7 +70,7 @@ class AntiSpam {
     if (where === 'room' && delay && Date.now() - u.joined < delay * 1000) {
       this.stats.spam.newUser++;
       const left = Math.ceil((delay * 1000 - (Date.now() - u.joined)) / 1000);
-      return `New users can post in the Main Room in ${left}s. You can chat privately right away.`;
+      return `New users can post in rooms in ${left}s. You can chat privately right away.`;
     }
 
     const links = this.settings.get('linkPolicy');

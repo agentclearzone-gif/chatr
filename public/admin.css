@@ -128,6 +128,7 @@ form.panel .btn { justify-self: start; margin-top: 6px; }
 .tag.mask { background: var(--warn-bg); color: var(--warn); }
 .tag.flag { background: var(--block-bg); color: var(--danger); }
 .tbl select { padding: 5px 8px; font-size: 13px; }
+.acct-ph { width: 28px; height: 28px; border-radius: 50%; object-fit: cover; flex: none; }
 
 /* ---------- gender ---------- */
 .gender-bar { display: flex; gap: 2px; height: 22px; border-radius: 6px; overflow: hidden; margin: 6px 0 12px; background: var(--grid); }

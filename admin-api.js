@@ -111,7 +111,7 @@ module.exports = function createAdminApi(ctx) {
       if (g && u.g !== g) continue;
       if (s && !u.name.toLowerCase().includes(s) && !u.loc.toLowerCase().includes(s) && !u.ip.includes(s)) continue;
       total++;
-      if (out.length < 300) out.push({ ...userInfo(u), ip: u.ip, ipcc: u.ipcc, strikes: u.spam ? u.spam.strikes : 0, muted: !!(u.spam && u.spam.mutedUntil > Date.now()), joined: u.joined, msgs: u.msgCount, convos: u.convoKeys.size });
+      if (out.length < 300) out.push({ ...userInfo(u), reg: !!u.acct, ip: u.ip, ipcc: u.ipcc, strikes: u.spam ? u.spam.strikes : 0, muted: !!(u.spam && u.spam.mutedUntil > Date.now()), joined: u.joined, msgs: u.msgCount, convos: u.convoKeys.size });
     }
     out.sort((a, b) => b.joined - a.joined);
     return { total, users: out };
@@ -227,6 +227,11 @@ module.exports = function createAdminApi(ctx) {
     if (p === '/antispam' && method === 'PUT') {
       try { return json(res, 200, { settings: settings.update(await readBody(req)) }); }
       catch (e) { return json(res, 400, { error: e.message }); }
+    }
+
+    if (p === '/accounts' && method === 'GET') return json(res, 200, { total: ctx.accounts.total(), accounts: ctx.accounts.list(url.searchParams.get('q')) });
+    if ((m = p.match(/^\/accounts\/([a-z0-9_]{3,16})\/(photo|bio|delete)$/)) && method === 'POST') {
+      return ctx.accounts.moderate(m[1], m[2]) ? json(res, 200, { ok: true }) : json(res, 404, { error: 'Account not found' });
     }
 
     if (p === '/rooms' && method === 'GET') return json(res, 200, { rooms: ctx.rooms.list() });

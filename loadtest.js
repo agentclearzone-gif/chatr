@@ -37,7 +37,7 @@ function spawn(i) {
       bytes += data.length;
       if (!c.id) {
         const m = JSON.parse(data);
-        if (m.t === 'welcome') { c.id = m.me[0]; joined++; resolve(); }
+        if (m.t === 'welcome') { c.id = m.me[0]; joined++; if (i < TALKERS) ws.send(JSON.stringify({ t: 'rjoin', r: 'main' })); resolve(); }
         else if (m.t === 'err') { failed++; resolve(); }
         return;
       }
