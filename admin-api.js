@@ -277,6 +277,11 @@ module.exports = function createAdminApi(ctx) {
       return json(res, 200, ctx.themeInfo());
     }
 
+    if (p === '/loadtest' && method === 'GET') return json(res, 200, { ...ctx.loadTest.status(), limits: ctx.loadTest.limits, rooms: ctx.rooms.list().filter(r => !r.locked).map(r => ({ id: r.id, name: r.name })) });
+    if (p === '/loadtest/start' && method === 'POST') {
+      try { return json(res, 200, ctx.loadTest.start(await readBody(req))); } catch (e) { return json(res, 400, { error: e.message }); }
+    }
+    if (p === '/loadtest/stop' && method === 'POST') return json(res, 200, ctx.loadTest.stop());
     if (p === '/bans' && method === 'GET') return json(res, 200, { bans: bans.list() });
     if ((m = p.match(/^\/bans\/(\d+)$/)) && method === 'DELETE') return bans.remove(+m[1]) ? json(res, 200, { ok: true }) : json(res, 404, { error: 'Not found' });
 

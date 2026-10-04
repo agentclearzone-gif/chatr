@@ -63,7 +63,7 @@
   const awayFor = since => Math.max(60000, Date.now() + clockSkew - since);
   const awayShort = ms => { const m = Math.floor(ms / 60000); return m < 60 ? m + 'm' : m < 1440 ? Math.floor(m / 60) + 'h' : Math.floor(m / 1440) + 'd'; };
   const awayLong = ms => { const m = Math.floor(ms / 60000); return m < 60 ? `${m} minute${m === 1 ? '' : 's'}` : m < 1440 ? `${Math.floor(m / 60)} hour${m < 120 ? '' : 's'}` : `${Math.floor(m / 1440)} day${m < 2880 ? '' : 's'}`; };
-  const vb = u => (u && u.reg ? '<span class="vbadge" title="Registered profile">✓</span>' : '');
+  const vb = u => (u && u.reg ? '<span class="vbadge" title="Registered profile">✓</span>' : '') + (u && u.test ? '<span class="test-badge" title="Simulated user from an admin load test">TEST</span>' : '');
   const subLine = u => [u.age + ' Yrs', u.loc, countryName(u.cc)].filter(Boolean).join(', ');
   const flagImg = u => `<img class="flag" src="${flagUrl(u.cc)}" srcset="${flagSrcset(u.cc)}" alt="${esc(countryName(u.cc))}" title="${esc(countryName(u.cc))}" loading="lazy" width="40" height="30">`;
 
@@ -383,7 +383,7 @@
     resetToLogin('You left the chat. All messages were deleted.');
   };
 
-  const toUser = t => ({ id: t[0], name: t[1], g: t[2], age: t[3], loc: t[4], cc: t[5], reg: t[6] === 1, photo: t[7] || 0, idle: t[8] || 0, status: t[9] || '', since: t[10] || 0 });
+  const toUser = t => ({ id: t[0], name: t[1], g: t[2], age: t[3], loc: t[4], cc: t[5], reg: t[6] === 1, photo: t[7] || 0, idle: t[8] || 0, status: t[9] || '', since: t[10] || 0, test: t[11] === 1 });
   function addUser(t, ghost) {
     const old = S.users.get(t[0]);
     if (old && old.ghost && !ghost) { const u = toUser(t); u.seq = old.seq; S.users.set(u.id, u); return; } // invisible person showed up
@@ -580,7 +580,7 @@
       const who = document.createElement('div');
       who.className = 'who ' + msg.g; who.textContent = msg.name; who.dataset.uid = msg.from;
       const sender = S.users.get(msg.from);
-      if (sender && sender.reg) who.insertAdjacentHTML('beforeend', vb(sender));
+      if (sender && (sender.reg || sender.test)) who.insertAdjacentHTML('beforeend', vb(sender));
       el.appendChild(who);
     }
     const b = document.createElement('div');

@@ -38,6 +38,7 @@
     <a href="#appearance" data-view="appearance">🎨 Appearance</a>
     <a href="#spam" data-view="spam">🛡️ Anti-spam</a>
     <a href="#bans" data-view="bans">⛔ Bans</a>
+    <a href="#loadtest" data-view="loadtest">🧪 Load test</a>
     <div class="nav-foot">
       <div class="live"><i></i> Live · updates every 4s</div>
       <button class="btn ghost" id="logout">Sign out</button>
@@ -358,6 +359,24 @@
           </table>
         </div>
       </div>
+    </section>
+
+    <section class="view" id="v-loadtest" hidden>
+      <header class="vh"><h1>Load test</h1><span class="muted">Check how many people the server can handle</span></header>
+      <div class="panel">
+        <div class="ph"><h2>Start a test</h2></div>
+        <p class="muted" style="margin:0 0 14px">The server connects simulated users to itself, joins them to a room and has some of them chat. They are named <b>Test_0001</b>, <b>Test_0002</b>… and show a grey <b>TEST</b> badge to everyone, and their messages say “Load test message”. Everyone online will see them, so run big tests when the site is quiet. They all leave when the test ends or you press Stop.</p>
+        <form id="ltForm" class="row" style="align-items:flex-end;flex-wrap:wrap;gap:12px">
+          <label class="fld">Users <input type="number" id="ltCount" min="1" max="3000" value="1000" required></label>
+          <label class="fld">Duration (minutes) <input type="number" id="ltMinutes" min="0.5" max="30" step="0.5" value="2" required></label>
+          <label class="fld">Room <select id="ltRoom"></select></label>
+          <label class="fld">Messages per minute <input type="number" id="ltPerMin" min="0" max="600" value="60"></label>
+          <button class="btn primary" type="submit" id="ltStart">Start test</button>
+          <button class="btn ghost" type="button" id="ltStop" hidden>Stop test</button>
+        </form>
+      </div>
+      <div class="tiles" id="ltTiles"></div>
+      <p class="muted" id="ltNote"></p>
     </section>
   </main>
 </div>

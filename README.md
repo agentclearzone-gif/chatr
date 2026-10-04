@@ -86,6 +86,14 @@ Guests can chat without signing up. On the login screen users can also **Log in*
 - **Friends:** registered users can add each other as friends. Tap the add-friend button next to anyone with a ✓ profile in **People** or **Search**, type their username in the box at the top of the **Friends** tab (works even when they are offline), or tap **＋ Add friend** in a chat. The other person gets a request (toast, sound and a badge on the ❤ **Friends** tab) and can accept or decline; mutual requests become friends instantly. The Friends tab lists requests, online friends (with a green dot, tap to chat), offline friends, and sent requests. Friends get a ❤ in the People list. Friendships are saved with the profiles (up to 500 friends and 100 pending requests, rate-limited). Guests are invited to create a profile.
 - **Admin → Accounts:** search profiles, remove a photo, clear a bio, or delete an account (if they're online, the user is removed from the chat).
 
+## Load test (Admin → 🧪 Load test)
+
+- Pick a number of users (up to 3,000), a duration (up to 30 minutes), a room and how many messages per minute. The server connects that many simulated users **to itself** over real WebSockets, joins them to the room, and some of them chat. This works on Render or Railway with nothing extra to install.
+- Live results: users connected / failed, message delay (median, 95%, 99%), server memory, server (event-loop) delay and data delivered, with a verdict at the end.
+- Test users are always visibly marked: names `Test_0001`, `Test_0002`…, a grey **TEST** badge in every list and on their messages, and messages that say "Load test message". Everyone online sees them, so run big tests when the site is quiet. They all leave when the test ends or you press **Stop test**.
+- They skip the bot check only with a secret per-server token that is accepted from the server itself (127.0.0.1), and room flood limits don't apply to them.
+- Local result (MacBook): 1,000 users joined with 0 failures, median message delay 44 ms (99%: 79 ms), about 280 MB of memory.
+
 ## Search engines (SEO)
 
 - The landing page has a keyword-rich `<title>` and meta description (English + Arabic: "شات عربي بدون تسجيل"), Open Graph and X/Twitter tags for link previews, `WebApplication` structured data (JSON-LD), and a short visible "about" section under the login card with an `<h1>`. Search engines need that readable text, because the rest of the page is a login form.

@@ -424,6 +424,7 @@ input, select { font: inherit; color: inherit; }
 .fr-add input:focus { border-color: var(--primary); }
 .fr-add button { display: inline-flex; align-items: center; gap: 6px; border: 0; border-radius: 10px; padding: 0 14px; font: inherit; font-weight: 700; font-size: 13.5px;
   color: #fff; background: linear-gradient(180deg, var(--primary), var(--primary-2)); cursor: pointer; }
+.test-badge { display: inline-block; margin-left: 5px; padding: 1px 5px; border-radius: 4px; background: #64748b; color: #fff; font-size: 9.5px; font-weight: 700; letter-spacing: .04em; vertical-align: 2px; }
 .heart { color: #e0457b; font-size: 12px; margin-left: 4px; }
 .friend-btn { border: 1.5px solid var(--primary); background: var(--card); color: var(--primary-2); border-radius: 999px; padding: 7px 12px;
   font-size: 13px; font-weight: 700; margin-right: 4px; white-space: nowrap; }

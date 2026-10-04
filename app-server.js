@@ -20,6 +20,7 @@ const { WebSocketServer } = require('ws');
 const COUNTRY_CODES = new Set(require('./public/countries.js'));
 const WordFilter = require('./filter.js');
 const createAdminApi = require('./admin-api.js');
+const createLoadTest = require('./loadtest-runner.js');
 const Geo = require('./geo.js');
 const Settings = require('./settings.js');
 const Captcha = require('./captcha.js');
@@ -222,7 +223,10 @@ function clientIp(req) {
 const isLoopback = ip => ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1';
 const geo = new Geo({ dataDir: process.env.GEO_DIR || path.join(__dirname, 'data'), trustProxy: TRUST_PROXY, devIp: process.env.GEO_DEV_IP || '' });
 
+// Admin → Load test: simulated, clearly-marked test users connected over loopback
+const loadTest = createLoadTest({ port: PORT, states: Geo.STATES, roomIds: () => rooms.list.filter(r => !r.pw).map(r => r.id) });
 const adminApi = createAdminApi({
+  loadTest,
   users, convos, roomLog, stats, filter, bans, settings, captcha, clientIp, dataDir: DATA_DIR, storage: () => store.describe(),
   theme, themeInfo: () => ({ theme: theme.all(), presets: Theme.PRESETS, defaultLogo: Theme.DEFAULT_LOGO, heroDefault: HERO_DEFAULT, ...themeAssets(theme.all()) }),
   onThemeChange: renderIndex,
@@ -476,18 +480,18 @@ function handle(ws, m) {
       if (room.chat === false) return send(ws, { t: 'err', e: 'Chatting is turned off in this room. You can still message people privately.' });
       const text = cleanText(m.x, MAX_TEXT);
       if (!text) return;
-      const muted = antispam.checkMuted(u);
+      const muted = !u.test && antispam.checkMuted(u);
       if (muted) return send(ws, { t: 'err', e: muted });
       // Flood limit (admin-configurable): at most N room messages per user in any 30 seconds, across all rooms.
       const now = Date.now(), limit = settings.get('roomMsgsPer30s');
       u.roomTimes = u.roomTimes.filter(t => now - t < 30000);
-      if (u.roomTimes.length >= limit) {
+      if (u.roomTimes.length >= limit && !u.test) {
         antispam.strike(u, 'rateLimited');
         const wait = Math.ceil((u.roomTimes[0] + 30000 - now) / 1000);
         return send(ws, { t: 'err', e: `You can send ${limit} message${limit === 1 ? '' : 's'} every 30 seconds in rooms. Try again in ${wait}s.` });
       }
       u.roomTimes.push(now);
-      const spam = antispam.checkText(u, text, 'room');
+      const spam = !u.test && antispam.checkText(u, text, 'room');
       if (spam) return send(ws, { t: 'err', e: spam });
       const ts = Date.now();
       const r = filter.check(text);
@@ -720,7 +724,7 @@ function readProfile(m, ws) {
 /** What everyone's user list gets: [id, name, gender, age, state, country, registered, photo version] */
 function tupleOf(u) {
   const acct = u.acct && accounts.get(u.acct);
-  return [u.id, u.name, u.g, u.age, u.loc, u.cc, acct ? 1 : 0, (acct && acct.photoV) || 0, u.idleSince || 0, u.status || '', u.statusSince || 0];
+  return [u.id, u.name, u.g, u.age, u.loc, u.cc, acct ? 1 : 0, (acct && acct.photoV) || 0, u.idleSince || 0, u.status || '', u.statusSince || 0, u.test ? 1 : 0];
 }
 function myAccount(u) {
   const a = u.acct && accounts.get(u.acct);
@@ -767,10 +771,12 @@ async function join(ws, m) {
     stats.spam.honeypot++;
     return fail('Could not join. Please reload the page and try again.', { code: 'captcha' });
   }
+  // load-test users (Admin → Load test): secret token, loopback only, guest mode, Test_ names
+  const isTest = m.lt === loadTest.TOKEN && isLoopback(ws.ip) && mode === 'guest' && /^Test_\d+$/.test(name);
   ws.joining = true;
   let acct = null, warn = null;
   try {
-    if (!(await captcha.verify(m.cap, ws.ip))) return fail('Bot check failed. Please try again.', { code: 'captcha' });
+    if (!isTest && !(await captcha.verify(m.cap, ws.ip))) return fail('Bot check failed. Please try again.', { code: 'captcha' });
     if (mode === 'login') {
       acct = await accounts.login(name, m.pw);
       if (!acct) { bump(loginFails, ws.ip, 15 * 60000); return fail('Wrong username or password.'); }
@@ -794,7 +800,7 @@ async function join(ws, m) {
   const u = {
     id: nextId++, name: display, ...profile, ws, ip: ws.ip, ipcc: ws.ipcc, device, acct: acct ? acct.key : null, joined: Date.now(), msgCount: 0,
     roomTimes: [], pmBucket: bucket(15), imgBucket: bucket(3), tyBucket: bucket(3), draftBucket: bucket(30), roomPwBucket: bucket(5), profileBucket: bucket(5), friendBucket: bucket(20), readBucket: bucket(20), idleBucket: bucket(6), idleSince: 0, statusBucket: bucket(6), status: '', statusSince: 0, invisible: false,
-    blocked: new Set(), convoKeys: new Set(), rooms: new Set(),
+    blocked: new Set(), convoKeys: new Set(), rooms: new Set(), test: isTest,
   };
   u.tuple = tupleOf(u);
   antispam.init(u);

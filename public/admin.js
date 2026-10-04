@@ -72,7 +72,7 @@
   });
   $('logout').onclick = async () => { try { await api('/logout', { method: 'POST' }); } catch {} showLogin(); };
 
-  const VIEWS = ['overview', 'convos', 'room', 'users', 'accounts', 'filter', 'appearance', 'spam', 'bans'];
+  const VIEWS = ['overview', 'convos', 'room', 'users', 'accounts', 'filter', 'appearance', 'spam', 'bans', 'loadtest'];
   let view = 'overview';
   function route() {
     const v = location.hash.slice(1).split('?')[0];
@@ -101,6 +101,7 @@
       else if (view === 'appearance') { if (entering) await loadAppearance(); }
       else if (view === 'spam') await loadSpam(entering);
       else if (view === 'bans') await loadBans();
+      else if (view === 'loadtest') await loadLoadTest(entering);
     } catch (e) { if (e.message !== 'Signed out') console.warn(e); }
     finally { busy = false; }
   }
@@ -757,6 +758,51 @@
   });
 
   // ================= Bans =================
+  // ================= Load test =================
+  let ltPoll = null;
+  async function loadLoadTest(entering) {
+    const s = await api('/loadtest');
+    if (entering) {
+      const cur = $('ltRoom').value;
+      $('ltRoom').innerHTML = s.rooms.map(r => `<option value="${esc(r.id)}">${esc(r.name)}</option>`).join('');
+      if (cur) $('ltRoom').value = cur;
+    }
+    renderLoadTest(s);
+    clearTimeout(ltPoll);
+    if (s.running) ltPoll = setTimeout(() => { if (view === 'loadtest') loadLoadTest(false).catch(() => {}); }, 1500);
+  }
+  function renderLoadTest(s) {
+    $('ltStart').hidden = !!s.running; $('ltStop').hidden = !s.running;
+    for (const el of $('ltForm').querySelectorAll('input, select')) el.disabled = !!s.running;
+    if (!s.started) { $('ltTiles').innerHTML = ''; $('ltNote').textContent = 'No test has run since the server started.'; return; }
+    const ms = v => (v == null ? '–' : v + ' ms');
+    const left = Math.max(0, Math.round((s.endsAt - Date.now()) / 1000));
+    $('ltTiles').innerHTML = [
+      tile('Connected', `${fmt(s.open)} <small>/ ${fmt(s.count)}</small>`, `${fmt(s.connected)} joined in total · ${fmt(s.failed)} failed`),
+      tile('Message delay (median)', ms(s.messages.p50), `95%: ${ms(s.messages.p95)} · 99%: ${ms(s.messages.p99)} · ${fmt(s.messages.sent)} sent`),
+      tile('Server memory', s.rssMB + ' MB', `peak ${s.peakRssMB} MB during the test`),
+      tile('Server delay', s.loopDelayMs.p99 + ' ms', `event loop, 99th percentile (median ${s.loopDelayMs.p50} ms, max ${s.loopDelayMs.max} ms)`),
+      tile('Data delivered', s.receivedMB + ' MB', 'received by the simulated users'),
+      tile(s.running ? 'Time left' : 'Status', s.running ? `${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}` : (s.stopped && s.stopped.reason === 'finished' ? 'Finished' : 'Stopped'), `${s.minutes} min · ${s.perMin} messages/min`),
+    ].join('');
+    const verdict = !s.running && s.messages.p95 != null
+      ? (s.messages.p95 < 300 && s.loopDelayMs.p99 < 100 && !s.failed ? '✅ The server handled this load comfortably.' : s.messages.p95 < 1000 ? '⚠️ The server coped, but messages were slowed down. Consider a bigger server plan before reaching this many users.' : '❌ The server struggled: messages took over a second. Use a bigger server plan for this many users.')
+      : '';
+    $('ltNote').textContent = (s.errors.length ? 'Join errors: ' + s.errors.map(([e, n]) => `${e} (${n})`).join(', ') + '. ' : '') + verdict;
+  }
+  $('ltForm').addEventListener('submit', async e => {
+    e.preventDefault();
+    if (!confirm(`Connect ${$('ltCount').value} test users? Everyone online will see them (marked TEST) until the test ends.`)) return;
+    try {
+      await api('/loadtest/start', { method: 'POST', body: { count: +$('ltCount').value, minutes: +$('ltMinutes').value, room: $('ltRoom').value, perMin: +$('ltPerMin').value } });
+      toast('Load test started');
+      loadLoadTest(false);
+    } catch (err) { toast(err.message); }
+  });
+  $('ltStop').addEventListener('click', async () => {
+    try { renderLoadTest(await api('/loadtest/stop', { method: 'POST' })); toast('Load test stopped'); setTimeout(() => loadLoadTest(false), 1500); } catch (err) { toast(err.message); }
+  });
+
   async function loadBans() {
     const d = await api('/bans');
     $('banTable').tBodies[0].innerHTML = d.bans.length ? d.bans.slice().reverse().map(b => `<tr>
