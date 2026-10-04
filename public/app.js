@@ -1089,8 +1089,6 @@
     for (const x of $('tabs').children) x.classList.toggle('on', x === b);
     list.scrollTop = 0; markDirty();
   });
-  let qTimer;
-  $('search').addEventListener('input', e => { clearTimeout(qTimer); qTimer = setTimeout(() => { S.q = e.target.value.trim(); list.scrollTop = 0; markDirty(); }, 120); });
 
   // ---------------- badges / title ----------------
   function updateBadges(target) {
