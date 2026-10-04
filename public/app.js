@@ -576,13 +576,29 @@
   function msgEl(msg, target) {
     const el = document.createElement('div');
     el.className = 'msg' + (msg.me ? ' me' : '') + (msg.fail ? ' fail' : '');
-    if (isRoom(target) && !msg.me) {
-      const who = document.createElement('div');
-      who.className = 'who ' + msg.g; who.textContent = msg.name; who.dataset.uid = msg.from;
-      const sender = S.users.get(msg.from);
-      if (sender && (sender.reg || sender.test)) who.insertAdjacentHTML('beforeend', vb(sender));
-      el.appendChild(who);
-    }
+    // who sent it: me, the room member, or the person in this private chat
+    const room = isRoom(target);
+    const c = !room && S.convos.get(target);
+    const sender = msg.me ? S.me : S.users.get(msg.from) || (c && c.peer) || { name: msg.name || '?', g: msg.g || 'm' };
+    const av = document.createElement('div');
+    av.className = 'm-av'; av.innerHTML = avatar(sender);
+    const col = document.createElement('div');
+    col.className = 'm-col';
+    const head = document.createElement('div');
+    head.className = 'm-head';
+    const who = document.createElement('span');
+    who.className = 'm-name';
+    who.textContent = msg.me ? 'You' : (room ? msg.name : sender.name);
+    if (room && !msg.me) { who.classList.add('who'); who.dataset.uid = msg.from; av.classList.add('who'); av.dataset.uid = msg.from; }
+    if (!msg.me && (sender.reg || sender.test)) who.insertAdjacentHTML('beforeend', vb(sender));
+    const meta = document.createElement('span');
+    meta.className = 'meta';
+    meta.textContent = msg.fail ? '⚠ ' + msg.fail : timeFmt.format(msg.ts);
+    if (msg.me && !room && !msg.fail) meta.insertAdjacentHTML('beforeend', ticksHtml(msg));
+    const dot = document.createElement('i');
+    head.append(who, dot, meta);
+    col.appendChild(head);
+    el.append(av, col);
     const b = document.createElement('div');
     b.className = 'bubble';
     if (msg.i) {
@@ -592,12 +608,7 @@
       img.onload = () => { const box = $('msgs'); if (box.scrollHeight - box.scrollTop - box.clientHeight < 400) box.scrollTop = box.scrollHeight; };
       b.appendChild(img);
     } else setBubbleText(b, msg.x);
-    el.appendChild(b);
-    const meta = document.createElement('div');
-    meta.className = 'meta';
-    meta.textContent = msg.fail ? '⚠ ' + msg.fail : timeFmt.format(msg.ts);
-    if (msg.me && !isRoom(target) && !msg.fail) meta.insertAdjacentHTML('beforeend', ticksHtml(msg));
-    el.appendChild(meta);
+    col.appendChild(b);
     return el;
   }
 
@@ -687,7 +698,8 @@
       const c = S.convos.get(target);
       const u = S.users.get(target) || (c && c.peer);
       const gone = !S.users.has(target);
-      peer.innerHTML = `${avatar(u)}<div class="info"><div class="nm">${esc(u.name)}${vb(u)}</div><div class="sub">${gone ? 'Left the chat' : (STATUS[u.status] && u.status !== 'online' ? `<span class="st-label st-${u.status}">${STATUS[u.status].label}</span> · ` : '') + esc(subLine(u))}</div></div>${flagImg(u)}`;
+      const st = STATUS[u.status] && u.status !== 'online' ? `<span class="st-label st-${u.status}">${STATUS[u.status].label}</span>` : '<span class="st-label st-online">Online</span>';
+      peer.innerHTML = `<div class="peer-av${gone || (u.status && u.status !== 'online') ? '' : ' online'}">${avatar(u)}</div><div class="info"><div class="nm">${esc(u.name)}${vb(u)}</div><div class="sub">${gone ? 'Left the chat' : `${st}<span class="chip">${esc(subLine(u))}</span>`}</div></div>${flagImg(u)}`;
     }
     const gone = !inRoom && !S.users.has(target);
     $('picBtn').hidden = inRoom || gone;
@@ -832,13 +844,14 @@
   // Receiving side: a dashed "ghost" bubble kept as the last item in the chat.
   const draftEl = document.createElement('div');
   draftEl.className = 'msg draft';
-  draftEl.innerHTML = '<div class="bubble"></div><div class="meta"></div>';
+  draftEl.innerHTML = '<div class="m-av"></div><div class="m-col"><div class="m-head"><span class="meta"></span></div><div class="bubble"></div></div>';
   let draftHideTimer = 0;
   function showDraft(text) {
     if (!text || !text.trim()) return hideDraft();
     hideTyping();
     const u = S.users.get(S.active);
     draftEl.querySelector('.meta').textContent = `${u ? u.name : ''} is typing…`;
+    draftEl.querySelector('.m-av').innerHTML = u ? avatar(u) : '';
     stickToBottom(() => {
       draftEl.querySelector('.bubble').textContent = text;
       if (!draftEl.isConnected) $('msgs').appendChild(draftEl);
@@ -912,7 +925,9 @@
   }
   function renderSoundBtn() {
     const b = $('soundBtn');
-    b.textContent = S.sound ? '🔔' : '🔕';
+    b.innerHTML = S.sound ? '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15zM10 20.5a2 2 0 0 0 4 0"/></svg>'
+      : '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 16V11a6 6 0 0 1 9.5-4.9M18 11v5l1.5 2h-12M10 20.5a2 2 0 0 0 4 0M4 4l16 16"/></svg>';
+    b.classList.toggle('off', !S.sound);
     b.title = b.ariaLabel = S.sound ? 'Message sound on' : 'Message sound off';
   }
   $('soundBtn').onclick = () => {
@@ -922,6 +937,17 @@
     if (S.sound) { lastChime = 0; chime(); } // preview
   };
   renderSoundBtn();
+
+  // dark mode for the chat (remembered on this device)
+  function applyDark(on) {
+    $('app').dataset.theme = on ? 'dark' : 'light';
+    document.documentElement.dataset.chatTheme = on ? 'dark' : 'light';
+    $('themeBtn').title = $('themeBtn').ariaLabel = on ? 'Light mode' : 'Dark mode';
+    $('themeBtn').innerHTML = on ? '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4"/></svg>'
+      : '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/></svg>';
+  }
+  applyDark(store.get('chatr.dark') === true);
+  $('themeBtn').onclick = () => { const on = $('app').dataset.theme !== 'dark'; store.set('chatr.dark', on); applyDark(on); };
 
   // ---------------- emoji panel (Google Noto Emoji images, same look on every device) ----------------
   const EP_RECENT = 'chatr.recentEmoji';
@@ -1090,33 +1116,39 @@
       `<button type="button" class="st-btn" id="stBtn" aria-haspopup="menu" title="Set your status"><i class="st-ic st-${st}"></i>${STATUS[st].label}<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button></div>`;
     $('meBox').title = S.acct ? 'Edit your profile' : 'Create a profile to keep your name';
   }
-  $('meBox').addEventListener('click', e => {
-    if (e.target.closest('#stBtn')) { e.stopPropagation(); toggleStatusMenu(); return; }
-    openProfile();
-  });
+  $('meBox').addEventListener('click', e => { e.stopPropagation(); toggleStatusMenu(); });
   function toggleStatusMenu(force) {
     const menu = $('stMenu');
     const open = force !== undefined ? force : menu.hidden;
     if (!open) { menu.hidden = true; return; }
     const cur = myStatus();
-    menu.innerHTML = Object.entries(STATUS).map(([k, v]) =>
-      `<button type="button" role="menuitemradio" aria-checked="${k === cur}" data-st="${k}"${k === cur ? ' class="on"' : ''}><i class="st-ic st-${k}"></i><span><b>${v.label}</b><small>${v.hint}</small></span></button>`).join('');
+    menu.innerHTML = `<div class="st-head">${avatar(S.me)}<div class="info"><div class="nm">${esc(S.me.name)}${vb(S.me)}</div><div class="sub">${esc(subLine(S.me))}</div></div></div>` +
+      `<button type="button" class="st-prof" data-prof><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4.5 20.5c0-4 3.4-6.5 7.5-6.5s7.5 2.5 7.5 6.5"/></svg><span><b>${S.acct ? 'Edit my profile' : 'Create a profile'}</b><small>${S.acct ? 'Photo, bio, details, password' : 'Keep your name, add a photo and friends'}</small></span></button><div class="st-sep">Status</div>` +
+      Object.entries(STATUS).map(([k, v]) =>
+      `<button type="button" role="menuitemradio" aria-checked="${k === cur}" data-st="${k}"${k === cur ? ' class="on"' : ''}><i class="st-ic st-${k}"></i><span><b>${v.label}</b><small>${v.hint}</small></span></button>`).join('') +
+      // phones: the rail has no room for these buttons, so they live in this menu
+      `<div class="st-extra"><button type="button" data-act="soundBtn">${$('soundBtn').innerHTML}${S.sound ? 'Sound on' : 'Sound off'}</button><button type="button" data-act="themeBtn">${$('themeBtn').innerHTML}${$('app').dataset.theme === 'dark' ? 'Light' : 'Dark'}</button><button type="button" data-act="logoutBtn">${$('logoutBtn').innerHTML}Leave</button></div>`;
     menu.hidden = false;
   }
   $('stMenu').addEventListener('click', e => {
+    if (e.target.closest('[data-prof]')) { toggleStatusMenu(false); openProfile(); return; }
+    const act = e.target.closest('[data-act]');
+    if (act) { toggleStatusMenu(false); $(act.dataset.act).click(); return; }
     const b = e.target.closest('[data-st]');
     if (!b) return;
     toggleStatusMenu(false);
     if (b.dataset.st === myStatus()) return;
     if (!send({ t: 'status', s: b.dataset.st })) toast('Not connected. Please try again.');
   });
-  document.addEventListener('pointerdown', e => { if (!$('stMenu').hidden && !e.target.closest('#stMenu, #stBtn')) toggleStatusMenu(false); });
+  document.addEventListener('pointerdown', e => { if (!$('stMenu').hidden && !e.target.closest('#stMenu, #meBox')) toggleStatusMenu(false); });
   document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('stMenu').hidden) toggleStatusMenu(false); });
 
   // ---------------- sidebar sections: People · Rooms · Inbox · History ----------------
   let pane = 'people';
+  const PANE_TITLES = { people: 'People', rooms: 'Rooms', inbox: 'Inbox', history: 'History', search: 'Search', friends: 'Friends' };
   function showPane(name) {
     pane = name;
+    $('paneTitle').textContent = PANE_TITLES[name];
     for (const b of $('sideNav').children) b.classList.toggle('on', b.dataset.pane === name);
     for (const n of ['people', 'rooms', 'inbox', 'history', 'search', 'friends']) $('pane-' + n).hidden = n !== name;
     if (name === 'search') fillSearchCountries();
@@ -1125,6 +1157,7 @@
     renderPanes();
   }
   $('sideNav').addEventListener('click', e => { const b = e.target.closest('[data-pane]'); if (b) showPane(b.dataset.pane); });
+  $('newChatBtn').onclick = () => { showPane('search'); $('sName').focus(); };
 
   let panesRaf = 0;
   function schedulePanes() {
@@ -1148,6 +1181,10 @@
     const unreadRooms = [...S.rooms.values()].reduce((n, r) => n + (r.joined ? r.unread : 0), 0);
     for (const [id, n] of [['nbInbox', unreadPm], ['nbRooms', unreadRooms], ['nbFriends', S.fr.reqIn.length]]) { $(id).hidden = !n; $(id).textContent = n > 99 ? '99+' : n; }
     if (pane === 'friends') renderFriends();
+    const recent = convos.filter(([id, c]) => c.msgs.length && (S.users.has(id) || c.peer)).sort((a, b) => b[1].last - a[1].last).slice(0, 12);
+    $('recentWrap').hidden = !recent.length;
+    $('recentStrip').innerHTML = recent.map(([id, c]) => { const u = S.users.get(id) || c.peer;
+      return `<button type="button" class="rc${S.active === id ? ' sel' : ''}${S.users.has(id) && !(S.users.get(id).status) ? ' on' : ''}" data-uid="${id}" title="${esc(u.name)}">${avatar(u)}${c.unread ? `<b class="rc-n">${c.unread > 9 ? '9+' : c.unread}</b>` : ''}<span>${esc(u.name)}</span></button>`; }).join('');
     if (pane === 'inbox') {
       const rows = convos.filter(([, c]) => c.lastIn).sort((a, b) => b[1].lastIn - a[1].lastIn);
       $('inboxList').innerHTML = rows.length ? rows.map(([id, c]) => {
@@ -1163,7 +1200,7 @@
       }).join('') : '<div class="empty-pane">No chats yet in this visit.</div>';
     }
   }
-  for (const id of ['inboxList', 'historyList']) $(id).addEventListener('click', e => { const r = e.target.closest('[data-uid]'); if (r) openChat(+r.dataset.uid); });
+  for (const id of ['inboxList', 'historyList', 'recentStrip']) $(id).addEventListener('click', e => { const r = e.target.closest('[data-uid]'); if (r) openChat(+r.dataset.uid); });
   setInterval(() => { if (pane === 'inbox' || pane === 'history') renderPanes(); }, 30000); // refresh "5m ago"
 
   // ---------------- Search tab: username + gender + country ----------------

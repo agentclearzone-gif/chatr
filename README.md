@@ -66,6 +66,8 @@ Everything an admin changes is kept in `store.js`: the word filter, bans, anti-s
 
 ## How users chat
 
+- **Design:** a violet chat app (in `public/chat-ui.css`): an icon rail on the left (sections, sound, dark mode, leave, and your avatar for profile and status), card-style lists with a *Recent chats* strip, a large chat header with an online dot, messages with the sender's avatar and "Name · time" above each bubble, and a rounded message bar. A 🌙 button switches to dark mode (remembered per device). On phones the rail becomes a bottom tab bar, and sound / dark mode / leave move into the avatar menu. The login page still follows **Admin → Appearance**.
+
 - **1-to-1 mode by default:** after logging in, users aren't in any room. They tap someone in **People** to chat privately, and join group rooms from the **Rooms** tab if they want.
 - **Sidebar tabs:** **People** (quick search plus an **All / ♀ Female / ♂ Male** filter) · **Rooms** · **Inbox** · **History** · **Search** · **Friends**, with unread badges.
 - **Search:** find people online by username (partial match), gender (All / Female / Male), age range (18 to 99+) and country. The country list shows countries with people online first, with counts. Tap a result to start a private chat.
