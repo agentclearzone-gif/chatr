@@ -301,12 +301,20 @@ input, select { font: inherit; color: inherit; }
 .pw-change[open] { display: grid; gap: 10px; }
 
 /* Search tab */
-.search-form { display: grid; gap: 10px; padding: 14px 14px 12px; border-bottom: 1px solid var(--line); flex: none; }
+.search-form { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; padding: 14px 14px 12px; border-bottom: 1px solid var(--line); flex: none; min-width: 0; }
+.sg span { min-width: 0; white-space: nowrap; }
+/* the sidebar never grows wider than its column; its content adapts to the space available */
+.side { min-width: 0; overflow: hidden; container-type: inline-size; container-name: side; }
+@container side (max-width: 350px) {
+  .sg span { justify-content: center; padding: 9px 6px 9px 26px; font-size: 13.5px; }
+  .sg span::before { left: 7px; }
+  .sg .gi, .sg .sg-av { display: none; }
+}
 .search-form input, .search-form select { width: 100%; padding: 12px 14px; border: 1.5px solid var(--line); border-radius: 10px; background: var(--card);
   font-size: 16px; font-weight: 600; color: var(--text); outline: none; }
 .search-form input:focus, .search-form select:focus { border-color: var(--primary); }
-.sg { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
-.sg label { display: block; position: relative; } /* keeps the hidden radio inside its button */
+.sg { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; } /* equal columns that may shrink */
+.sg label { display: block; position: relative; min-width: 0; } /* keeps the hidden radio inside its button */
 .sg input { position: absolute; left: 0; top: 0; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
 .sg span { display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 9px 10px 9px 32px; border: 1.5px solid var(--line);
   border-radius: 10px; font-size: 14px; font-weight: 600; cursor: pointer; position: relative; background: var(--card); }
