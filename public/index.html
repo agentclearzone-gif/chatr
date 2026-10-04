@@ -121,6 +121,7 @@
       <button data-pane="history"><span class="ic" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg></span><span>History</span></button>
       <button data-pane="search"><span class="ic" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5 21 21"/></svg></span><span>Search</span></button>
       <button data-pane="friends"><span class="ic" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 20.5s-8-4.6-8-10.6A4.4 4.4 0 0 1 12 7.3a4.4 4.4 0 0 1 8 2.6c0 6-8 10.6-8 10.6z"/></svg></span><span>Friends</span><b class="nb" id="nbFriends" hidden></b></button>
+      <button data-pane="settings"><span class="ic" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></span><span>Settings</span></button>
     </div>
     <div class="rail-bottom">
       <button class="rail-btn" id="soundBtn" aria-label="Message sound on" title="Message sound on">🔔</button>
@@ -180,6 +181,10 @@
     <div class="pane" id="pane-friends" hidden>
       <div class="clist" id="friendsList"></div>
     </div>
+    <div class="pane" id="pane-settings" hidden>
+      <div class="set-scroll" id="setMain"></div>
+      <div class="set-scroll" id="setDetail" hidden></div>
+    </div>
     <div class="pane" id="pane-history" hidden>
       <p class="pane-note">Every chat from this visit, including people who have left. It's all deleted when you leave.</p>
       <div class="clist" id="historyList"></div>
@@ -209,7 +214,29 @@
       <div class="emoji-panel" id="emojiPop" hidden><div class="ep-tabs" id="epTabs"></div><div class="ep-grid" id="epGrid"></div></div>
     </form>
   </section>
+
+  <!-- Settings → Security → Screen lock -->
+  <div class="lock-scr" id="lockScr" hidden>
+    <form class="lock-card" id="lockForm" autocomplete="off">
+      <div class="lock-ic"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4.5" y="10.5" width="15" height="10" rx="2.5"/><path d="M8 10.5V7.5a4 4 0 0 1 8 0v3"/></svg></div>
+      <h2 data-i18n="Chat is locked">Chat is locked</h2>
+      <p data-i18n="Enter your PIN to continue">Enter your PIN to continue</p>
+      <input id="lockPin" type="password" inputmode="numeric" maxlength="8" autocomplete="off" aria-label="PIN">
+      <div class="err" id="lockErr"></div>
+      <button class="s-btn primary" type="submit" data-i18n="Unlock">Unlock</button>
+      <button class="s-link" type="button" id="lockLeave" data-i18n="Forgot your PIN? Leave the chat">Forgot your PIN? Leave the chat</button>
+    </form>
+  </div>
 </main>
+
+<dialog class="pw-dlg scan-dlg" id="scanDlg">
+  <form method="dialog">
+    <h3 data-i18n="Scan a code">Scan a code</h3>
+    <video id="scanVid" playsinline muted></video>
+    <p id="scanMsg"></p>
+    <button class="pw-join" value="close" data-i18n="Close">Close</button>
+  </form>
+</dialog>
 
 <dialog class="pw-dlg prof-dlg" id="profDlg">
   <form id="profForm" autocomplete="off">

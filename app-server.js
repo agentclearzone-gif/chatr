@@ -21,6 +21,7 @@ const COUNTRY_CODES = new Set(require('./public/countries.js'));
 const WordFilter = require('./filter.js');
 const createAdminApi = require('./admin-api.js');
 const createLoadTest = require('./loadtest-runner.js');
+const QRCode = require('qrcode');
 const Geo = require('./geo.js');
 const Settings = require('./settings.js');
 const Captcha = require('./captcha.js');
@@ -348,6 +349,15 @@ const server = http.createServer((req, res) => {
     res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
     return res.end(JSON.stringify(captcha.challenge(clientIp(req))));
   }
+  if (url.pathname === '/qr.svg') { // Settings → QR code: a link to chat with someone
+    const d = url.searchParams.get('d') || '';
+    if (!/^https?:\/\/\S{1,300}$/.test(d)) { res.writeHead(400); return res.end('Bad link'); }
+    return QRCode.toString(d, { type: 'svg', margin: 1, errorCorrectionLevel: 'M', color: { dark: '#1a1240', light: '#ffffff' } }, (e, svg) => {
+      if (e) { res.writeHead(500); return res.end(); }
+      res.writeHead(200, { 'content-type': 'image/svg+xml', 'cache-control': 'public, max-age=86400', 'x-content-type-options': 'nosniff' });
+      res.end(svg);
+    });
+  }
   if (url.pathname === '/robots.txt' || url.pathname === '/sitemap.xml') {
     const base = siteBase(req);
     const body = url.pathname === '/robots.txt'
@@ -528,6 +538,12 @@ function handle(ws, m) {
       const muted = antispam.checkMuted(u);
       if (muted) return send(ws, { t: 'ack', c, ok: false, e: muted });
       const isNewChat = !u.convoKeys.has(u.id < to.id ? u.id + '-' + to.id : to.id + '-' + u.id);
+      // Settings → Privacy: who may start a chat with this person (replies in an existing chat are always allowed)
+      if (isNewChat && to.pmFrom === 'reg' && !u.acct) return send(ws, { t: 'ack', c, ok: false, e: `${to.name} only accepts messages from registered profiles` });
+      if (isNewChat && to.pmFrom === 'friends') {
+        const a = to.acct && accounts.get(to.acct);
+        if (!(u.acct && a && (a.friends || []).includes(u.acct))) return send(ws, { t: 'ack', c, ok: false, e: `${to.name} only accepts messages from friends` });
+      }
       if (isNewChat) {
         const e = antispam.checkNewChat(u);
         if (e) return send(ws, { t: 'ack', c, ok: false, e });
@@ -612,6 +628,9 @@ function handle(ws, m) {
       else if (!u.invisible) pendingStatus.set(u.id, [u.status, u.statusSince]);
       return send(ws, { t: 'mystatus', s });
     }
+    case 'privacy': // Settings → Privacy → who can message me
+      if (['all', 'reg', 'friends'].includes(m.pm)) u.pmFrom = m.pm;
+      return;
     case 'read': {
       // read receipt: "I've seen your messages up to id N" → tell the sender (blue ticks)
       const from = users.get(m.f);

@@ -32,6 +32,10 @@
     get(k) { try { return JSON.parse(localStorage.getItem(k)); } catch { return null; } },
     set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
   };
+  // Settings, remembered on this device
+  const prefs = Object.assign({ pmFrom: 'all', receipts: true, desktop: false, previews: true, popups: true, enterSend: true,
+    theme: store.get('chatr.dark') === true ? 'dark' : 'light', fontSize: 'm', lang: 'en', pin: null, pinSalt: null, lockAfter: 5 }, store.get('chatr.prefs') || {});
+  const savePrefs = () => store.set('chatr.prefs', prefs);
 
   const AVATAR = {
     f: '<svg viewBox="0 0 64 64" aria-hidden="true"><path fill="#fff" d="M32 13c-7.6 0-12.6 5.8-12.6 13.6 0 5.6 1 9.4-2.4 13.4 3.3 1.3 6.6 1.1 9-.4 1.8 1.2 3.8 1.8 6 1.8s4.2-.6 6-1.8c2.4 1.5 5.7 1.7 9 .4-3.4-4-2.4-7.8-2.4-13.4C44.6 18.8 39.6 13 32 13z"/><path fill="#fff" d="M10 64c0-11.5 9.8-18.5 22-18.5S54 52.5 54 64z"/></svg>',
@@ -333,6 +337,10 @@
     renderMe();
     const saved = store.get('chatr.status');
     if (STATUS[saved] && saved !== 'online') send({ t: 'status', s: saved });
+    if (prefs.pmFrom !== 'all') send({ t: 'privacy', pm: prefs.pmFrom });
+    // opened from someone's QR code / chat link (?chat=Name)
+    const linked = new URLSearchParams(location.search).get('chat');
+    if (linked) { history.replaceState(null, '', location.pathname); setTimeout(() => openChatLink(linked), 400); }
     if (m.warn) setTimeout(() => toast(m.warn), 600);
     $('login').hidden = true;
     $('app').hidden = false;
@@ -351,12 +359,12 @@
     const r = [...S.rooms.values()].find(x => x.joined);
     if (r) return openChat(roomKey(r.id));
     S.active = null;
-    $('peer').innerHTML = '<div class="info"><div class="nm">1-to-1 chat</div><div class="sub">Private chats with one person at a time</div></div>';
+    $('peer').innerHTML = `<div class="info"><div class="nm">${t('1-to-1 chat')}</div><div class="sub">${t('Private chats with one person at a time')}</div></div>`;
     $('headActions').hidden = true; $('picBtn').hidden = true;
     $('composer').classList.add('disabled');
     $('liveNote').hidden = true;
     $('msgs').replaceChildren();
-    sysMsg(null, 'Tap someone in People to start a private chat, or open Rooms to join a group chat.');
+    sysMsg(null, t('Tap someone in People to start a private chat, or open Rooms to join a group chat.'));
     renderRooms(); renderList(true); schedulePanes();
   }
 
@@ -452,6 +460,7 @@
         pushMsg(m.f, { from: m.f, x: m.x, i: m.i, ts: m.ts, mid: m.mid });
         hideTyping(m.f);
         chime();
+        notifyDesktop(m.f, m);
         markRead(m.f);
         break;
       }
@@ -520,8 +529,8 @@
         if (S.active != null && !isRoom(S.active)) renderPeer();
         break;
       case 'frev':
-        if (m.kind === 'request') { if (!dnd()) toast(`💌 ${m.name} sent you a friend request`); chime(); }
-        else if (m.kind === 'accepted') { if (!dnd()) toast(`❤️ ${m.name} is now your friend`); chime(); }
+        if (m.kind === 'request') { if (!dnd() && prefs.popups) toast(`💌 ${m.name} sent you a friend request`); chime(); }
+        else if (m.kind === 'accepted') { if (!dnd() && prefs.popups) toast(`❤️ ${m.name} is now your friend`); chime(); }
         else if (m.kind === 'error') { S.frWatch = null; toast(m.e); }
         break;
     }
@@ -628,7 +637,7 @@
   /** Tell the other person I've seen their messages (only while their chat is actually on screen). */
   function markRead(id) {
     const c = S.convos.get(id);
-    if (!c || c.gone || !chatVisible(id)) return;
+    if (!c || c.gone || !chatVisible(id) || !prefs.receipts) return;
     let last = 0;
     for (const x of c.msgs) if (!x.me && x.mid > last) last = x.mid;
     if (last > (c.readSent || 0)) { c.readSent = last; send({ t: 'read', f: id, mid: last }); }
@@ -938,16 +947,19 @@
   };
   renderSoundBtn();
 
-  // dark mode for the chat (remembered on this device)
-  function applyDark(on) {
+  // light / dark / follow the device (Settings → Appearance); the 🌙 button switches light ↔ dark
+  const darkMq = window.matchMedia('(prefers-color-scheme: dark)');
+  function applyTheme() {
+    const on = prefs.theme === 'dark' || (prefs.theme === 'system' && darkMq.matches);
     $('app').dataset.theme = on ? 'dark' : 'light';
     document.documentElement.dataset.chatTheme = on ? 'dark' : 'light';
     $('themeBtn').title = $('themeBtn').ariaLabel = on ? 'Light mode' : 'Dark mode';
     $('themeBtn').innerHTML = on ? '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4"/></svg>'
       : '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/></svg>';
   }
-  applyDark(store.get('chatr.dark') === true);
-  $('themeBtn').onclick = () => { const on = $('app').dataset.theme !== 'dark'; store.set('chatr.dark', on); applyDark(on); };
+  applyTheme();
+  darkMq.addEventListener('change', () => { if (prefs.theme === 'system') applyTheme(); });
+  $('themeBtn').onclick = () => { prefs.theme = $('app').dataset.theme === 'dark' ? 'light' : 'dark'; savePrefs(); applyTheme(); refreshSetting(); };
 
   // ---------------- emoji panel (Google Noto Emoji images, same look on every device) ----------------
   const EP_RECENT = 'chatr.recentEmoji';
@@ -1113,6 +1125,7 @@
     $('meBox').innerHTML = `${avatar(S.me)}<div class="info"><div class="nm">${esc(S.me.name)}${vb(S.me)}</div>` +
       `<button type="button" class="st-btn" id="stBtn" aria-haspopup="menu" title="Set your status"><i class="st-ic st-${st}"></i>${STATUS[st].label}<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button></div>`;
     $('meBox').title = S.acct ? 'Edit your profile' : 'Create a profile to keep your name';
+    try { if (pane === 'settings' && !$('setMain').hidden) renderSettings(); } catch {}
   }
   $('meBox').addEventListener('click', e => { e.stopPropagation(); toggleStatusMenu(); });
   function toggleStatusMenu(force) {
@@ -1143,12 +1156,13 @@
 
   // ---------------- sidebar sections: People · Rooms · Inbox · History ----------------
   let pane = 'people';
-  const PANE_TITLES = { people: 'People', rooms: 'Rooms', inbox: 'Inbox', history: 'History', search: 'Search', friends: 'Friends' };
+  const PANE_TITLES = { people: 'People', rooms: 'Rooms', inbox: 'Inbox', history: 'History', search: 'Search', friends: 'Friends', settings: 'Settings' };
   function showPane(name) {
     pane = name;
-    $('paneTitle').textContent = PANE_TITLES[name];
+    $('paneTitle').textContent = t(PANE_TITLES[name]);
     for (const b of $('sideNav').children) b.classList.toggle('on', b.dataset.pane === name);
-    for (const n of ['people', 'rooms', 'inbox', 'history', 'search', 'friends']) $('pane-' + n).hidden = n !== name;
+    for (const n of ['people', 'rooms', 'inbox', 'history', 'search', 'friends', 'settings']) $('pane-' + n).hidden = n !== name;
+    if (name === 'settings') renderSettings();
     if (name === 'search') fillSearchCountries();
     if (name === 'people') renderList(true);
     if (name === 'rooms') renderRooms();
@@ -1459,6 +1473,324 @@
       if (e.data.logoHtml != null) $('logoBox').innerHTML = e.data.logoHtml;
     });
   }
+
+  // ---------------- Settings (rail → ⚙): account, QR code, privacy, security, notifications, chats, appearance, language ----------------
+  const SI = {
+    user: '<path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4.5 20.5c0-4 3.4-6.5 7.5-6.5s7.5 2.5 7.5 6.5"/>',
+    qr: '<rect x="4" y="4" width="6" height="6" rx="1.2"/><rect x="14" y="4" width="6" height="6" rx="1.2"/><rect x="4" y="14" width="6" height="6" rx="1.2"/><path d="M14 14h2.5v2.5M20 14v.01M14 20h.01M17 17.5V20h3v-3"/>',
+    shield: '<path d="M12 3.5 5 6v5.5c0 4.3 2.9 7.6 7 9 4.1-1.4 7-4.7 7-9V6z"/><path d="M12 10.2a1.6 1.6 0 1 0 0 .01M12 11.8v2.7"/>',
+    lock: '<rect x="5" y="10.5" width="14" height="10" rx="2.5"/><path d="M8.5 10.5V7.8a3.5 3.5 0 0 1 7 0v2.7M12 14.5v2"/>',
+    bell: '<path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15zM10 20.5a2 2 0 0 0 4 0"/>',
+    chat: '<path d="M5 5h14a1.5 1.5 0 0 1 1.5 1.5v9A1.5 1.5 0 0 1 19 17h-8l-4.5 3.5V17H5a1.5 1.5 0 0 1-1.5-1.5v-9A1.5 1.5 0 0 1 5 5zM8 9.5h8M8 12.5h5"/>',
+    palette: '<path d="M12 3.5a8.5 8.5 0 0 0 0 17c1.2 0 1.8-.8 1.8-1.7 0-1.2-1-1.5-1-2.6 0-1 .8-1.7 1.8-1.7h2.2a3.7 3.7 0 0 0 3.7-3.8c0-4-3.8-7.2-8.5-7.2z"/><circle cx="7.8" cy="11" r="1.1"/><circle cx="10.5" cy="7.6" r="1.1"/><circle cx="14.8" cy="7.8" r="1.1"/>',
+    lang: '<path d="M4 6h8M8 4v2M10.5 6c-.6 3.5-3 6.5-6 8M6 9.5c1 1.8 2.6 3.2 4.5 4M13 20l3.5-8.5L20 20M14.3 17h4.4"/>',
+    leave: '<path d="M14 4h4a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-4M10 16l-4-4 4-4M6 12h10"/>',
+  };
+  const ico = k => `<svg viewBox="0 0 24 24" aria-hidden="true">${SI[k]}</svg>`;
+  const CHEV = '<svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="m9.5 6 6 6-6 6"/></svg>';
+  const PM_LABEL = { all: 'Everyone', reg: 'Registered profiles', friends: 'Friends only' };
+  const THEME_LABEL = { light: 'Light', dark: 'Dark', system: 'System' };
+  const handle = name => '@' + String(name).toLowerCase();
+
+  function srow(id, icon, title, sub, value, cls = '') {
+    return `<button type="button" class="srow ${cls}" data-set="${id}"><span class="sic">${ico(icon)}</span>` +
+      `<span class="stx"><b>${t(title)}</b><small>${t(sub)}</small></span>${value ? `<span class="sval">${esc(value)}</span>` : ''}${CHEV}</button>`;
+  }
+  function renderSettings() {
+    if (!S.me) return;
+    $('setDetail').hidden = true; $('setMain').hidden = false;
+    const notifOn = S.sound || prefs.desktop || prefs.popups;
+    $('setMain').innerHTML =
+      `<button type="button" class="s-card s-prof" data-set="account"><span class="s-prof-av">${avatar(S.me)}</span>` +
+        `<span class="stx"><b>${esc(S.me.name)}${vb(S.me)}</b><small>${S.acct ? handle(S.me.name) : t('Guest · tap to create a profile')}</small></span>${CHEV}</button>` +
+      `<div class="s-card"><div class="s-sec">${t('Account')}</div>` +
+        srow('account', 'user', 'Account', 'Profile info', S.me.name) +
+        srow('qr', 'qr', 'QR Code', 'Share your code or scan one') +
+        srow('privacy', 'shield', 'Privacy', 'Who can message you', t(PM_LABEL[prefs.pmFrom])) +
+        srow('security', 'lock', 'Security', 'Password and screen lock', prefs.pin ? t('On') : '') + '</div>' +
+      `<div class="s-card"><div class="s-sec">${t('Preferences')}</div>` +
+        srow('notifications', 'bell', 'Notifications', 'Message alerts and sounds', t(notifOn ? 'On' : 'Off')) +
+        srow('chats', 'chat', 'Chats', 'Live typing, history and backup') +
+        srow('appearance', 'palette', 'Appearance', 'Theme and text size', t(THEME_LABEL[prefs.theme])) +
+        srow('language', 'lang', 'Language', 'App language', prefs.lang === 'ar' ? 'العربية' : 'English') + '</div>' +
+      `<div class="s-card">${srow('leave', 'leave', 'Leave chat', 'Delete all your chats and sign out', '', 'danger')}</div>`;
+  }
+
+  // detail pages
+  const sw = (key, title, sub, on) => `<label class="s-opt sw-row"><span class="stx"><b>${t(title)}</b>${sub ? `<small>${t(sub)}</small>` : ''}</span>` +
+    `<input type="checkbox" data-pref="${key}"${on ? ' checked' : ''}><i class="sw" aria-hidden="true"></i></label>`;
+  const radios = (key, opts, cur) => opts.map(([v, title, sub]) => `<label class="s-opt"><input type="radio" name="sp-${key}" value="${v}" data-pref="${key}"${v === cur ? ' checked' : ''}>` +
+    `<i class="rd" aria-hidden="true"></i><span class="stx"><b>${t(title)}</b>${sub ? `<small>${t(sub)}</small>` : ''}</span></label>`).join('');
+  const card = (title, body, note) => `<div class="s-card">${title ? `<div class="s-sec">${t(title)}</div>` : ''}${body}${note ? `<p class="s-note">${t(note)}</p>` : ''}</div>`;
+  const chatLink = () => `${location.origin}/?chat=${encodeURIComponent(S.me.name)}`;
+
+  const DETAIL = {
+    qr: () => card('', `<div class="qr-box"><img src="/qr.svg?d=${encodeURIComponent(chatLink())}" alt="${esc(t('QR Code'))}" width="200" height="200"></div>` +
+        `<p class="s-note center">${t('Anyone who scans this code opens a chat with you while you are online.')}</p>` +
+        `<div class="qr-link">${esc(chatLink())}</div>` +
+        `<div class="s-actions"><button type="button" class="s-btn" data-do="copyLink">${t('Copy link')}</button>${navigator.share ? `<button type="button" class="s-btn" data-do="shareLink">${t('Share')}</button>` : ''}</div>`) +
+      card('', `<button type="button" class="s-btn primary wide" data-do="scan">${ico('qr')}${t('Scan a code')}</button>`),
+    privacy: () => card('Who can message me', radios('pmFrom', [['all', 'Everyone', 'Anyone in the chat can start a chat with you'], ['reg', 'Registered profiles', 'Only people with a ✓ profile'], ['friends', 'Friends only', 'Only your friends (needs a profile)']], prefs.pmFrom),
+        'People you are already chatting with can always reply.') +
+      card('', sw('receipts', 'Read receipts', 'Let people see when you have read their messages', prefs.receipts)) +
+      card('', `<button type="button" class="srow" data-do="status"><span class="sic">${ico('user')}</span><span class="stx"><b>${t('Online status')}</b><small>${t(STATUS[myStatus()].label)}</small></span>${CHEV}</button>`),
+    security: () => card('Password', S.acct
+        ? `<button type="button" class="srow" data-do="password"><span class="sic">${ico('lock')}</span><span class="stx"><b>${t('Change password')}</b><small>${t('For your registered profile')}</small></span>${CHEV}</button>`
+        : `<p class="s-note">${t('Guests have no password. Create a profile to keep your name with a password.')}</p><div class="s-actions"><button type="button" class="s-btn primary" data-do="profile">${t('Create a profile')}</button></div>`) +
+      card('Screen lock', prefs.pin
+        ? `<div class="s-actions"><button type="button" class="s-btn primary" data-do="lockNow">${t('Lock now')}</button></div>` +
+          `<div class="s-sub">${t('Lock automatically')}</div>` + radios('lockAfter', [['0', 'Never'], ['1', 'After 1 minute away'], ['5', 'After 5 minutes away'], ['15', 'After 15 minutes away']], String(prefs.lockAfter)) +
+          `<form class="s-form" data-form="pinOff"><input type="password" inputmode="numeric" maxlength="8" placeholder="${esc(t('Current PIN'))}" name="cur"><button class="s-btn danger">${t('Turn off screen lock')}</button></form>`
+        : `<form class="s-form" data-form="pinSet"><input type="password" inputmode="numeric" maxlength="8" placeholder="${esc(t('New PIN (4–8 digits)'))}" name="pin"><input type="password" inputmode="numeric" maxlength="8" placeholder="${esc(t('Repeat PIN'))}" name="pin2"><button class="s-btn primary">${t('Turn on screen lock')}</button></form>`,
+        'The screen lock protects this device only. Your chats are still deleted when you leave.'),
+    notifications: () => card('', sw('sound', 'Message sound', 'Play a sound for new private messages', S.sound) +
+        sw('desktop', 'Desktop notifications', 'Show a notification when the tab is in the background', prefs.desktop) +
+        sw('previews', 'Show message text', 'Include the message in notifications', prefs.previews) +
+        sw('popups', 'Pop-ups', 'Friend requests and other notices', prefs.popups),
+        'Do not disturb (in your status) mutes all of these.'),
+    chats: () => card('', sw('live', 'Live typing', 'The other person sees your text as you type', S.live) +
+        sw('enterSend', 'Enter to send', 'When off, use the send button', prefs.enterSend)) +
+      card('History and backup', `<div class="s-actions col"><button type="button" class="s-btn" data-do="export">${t('Export chats (.txt)')}</button>` +
+        `<button type="button" class="s-btn danger" data-do="clear">${t('Clear all chats')}</button></div>`, 'Chats are never saved on the server. Export them if you want to keep a copy.'),
+    appearance: () => card('Theme', radios('theme', [['light', 'Light'], ['dark', 'Dark'], ['system', 'System', 'Follow your device setting']], prefs.theme)) +
+      card('Text size', radios('fontSize', [['s', 'Small'], ['m', 'Normal'], ['l', 'Large']], prefs.fontSize)),
+    language: () => card('', radios('lang', [['en', 'English'], ['ar', 'العربية', 'Arabic']], prefs.lang)),
+  };
+  const DETAIL_TITLE = { qr: 'QR Code', privacy: 'Privacy', security: 'Security', notifications: 'Notifications', chats: 'Chats', appearance: 'Appearance', language: 'Language' };
+  let setPage = null;
+  function openSetting(id) {
+    if (id === 'account') return openProfile();
+    if (id === 'leave') return $('logoutBtn').click();
+    setPage = id;
+    $('setMain').hidden = true; $('setDetail').hidden = false;
+    $('setDetail').innerHTML = `<div class="s-top"><button type="button" class="s-back" data-back aria-label="${esc(t('Back'))}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 5-7 7 7 7"/></svg></button><h2>${t(DETAIL_TITLE[id])}</h2></div>` + DETAIL[id]();
+    $('setDetail').scrollTop = 0;
+  }
+  const refreshSetting = () => { if (setPage && !$('setDetail').hidden) { const y = $('setDetail').scrollTop; openSetting(setPage); $('setDetail').scrollTop = y; } };
+  $('setMain').addEventListener('click', e => { const b = e.target.closest('[data-set]'); if (b) openSetting(b.dataset.set); });
+  $('setDetail').addEventListener('click', e => {
+    if (e.target.closest('[data-back]')) { setPage = null; return renderSettings(); }
+    const b = e.target.closest('[data-do]');
+    if (b) settingAction(b.dataset.do);
+  });
+
+  // a switch or option changed
+  $('setDetail').addEventListener('change', async e => {
+    const el = e.target.closest('[data-pref]');
+    if (!el) return;
+    const key = el.dataset.pref, val = el.type === 'checkbox' ? el.checked : el.value;
+    if (key === 'sound') { S.sound = val; store.set('chatr.sound', val); renderSoundBtn(); if (val) { lastChime = 0; chime(); } return; }
+    if (key === 'live') { S.live = val; store.set('chatr.live', val); if (!val) stopSharingDraft(); renderLiveNote(); return; }
+    if (key === 'desktop' && val) {
+      if (!('Notification' in window)) { el.checked = false; return toast(t('This browser does not support notifications')); }
+      const p = Notification.permission === 'granted' ? 'granted' : await Notification.requestPermission();
+      if (p !== 'granted') { el.checked = false; return toast(t('Notifications are blocked. Allow them in your browser settings.')); }
+    }
+    prefs[key] = key === 'lockAfter' ? +val : val;
+    savePrefs();
+    if (key === 'pmFrom') send({ t: 'privacy', pm: val });
+    if (key === 'theme') applyTheme();
+    if (key === 'fontSize') $('app').dataset.fs = val;
+    if (key === 'lang') { applyLang(); refreshSetting(); }
+  });
+
+  $('setDetail').addEventListener('submit', async e => {
+    e.preventDefault();
+    const f = e.target, kind = f.dataset.form;
+    if (kind === 'pinSet') {
+      const pin = f.pin.value.trim();
+      if (!/^\d{4,8}$/.test(pin)) return toast(t('The PIN must be 4–8 digits'));
+      if (pin !== f.pin2.value.trim()) return toast(t('The two PINs are different'));
+      prefs.pinSalt = Array.from(crypto.getRandomValues(new Uint8Array(12)), b => b.toString(16).padStart(2, '0')).join('');
+      prefs.pin = await pinHash(pin);
+      savePrefs(); toast(t('Screen lock is on')); refreshSetting();
+    } else if (kind === 'pinOff') {
+      if ((await pinHash(f.cur.value.trim())) !== prefs.pin) return toast(t('Wrong PIN'));
+      prefs.pin = null; prefs.pinSalt = null; savePrefs(); toast(t('Screen lock is off')); refreshSetting();
+    }
+  });
+
+  function settingAction(what) {
+    const link = chatLink();
+    if (what === 'copyLink') navigator.clipboard.writeText(link).then(() => toast(t('Link copied')), () => toast(link));
+    else if (what === 'shareLink') navigator.share({ title: SITE(), text: t('Chat with me on') + ' ' + SITE(), url: link }).catch(() => {});
+    else if (what === 'scan') startScan();
+    else if (what === 'status') toggleStatusMenu(true);
+    else if (what === 'profile') openProfile();
+    else if (what === 'password') { openProfile(); const d = document.querySelector('#profDlg .pw-change'); if (d) { d.open = true; setTimeout(() => $('pCur').focus(), 50); } }
+    else if (what === 'lockNow') lockScreen();
+    else if (what === 'export') exportChats();
+    else if (what === 'clear') {
+      if (!S.convos.size) return toast(t('There are no chats to clear'));
+      if (!confirm(t('Delete all your private chats on this device?'))) return;
+      S.convos.clear();
+      markDirty(); updateTitle(); schedulePanes();
+      if (!isRoom(S.active)) openDefault();
+      toast(t('All chats cleared'));
+    }
+  }
+
+  function exportChats() {
+    const lines = [];
+    for (const [id, c] of S.convos) {
+      if (!c.msgs.length) continue;
+      const u = S.users.get(id) || c.peer || { name: '?' };
+      lines.push(`=== ${SITE()} chat with ${u.name} ===`);
+      for (const m of c.msgs) lines.push(`[${new Date(m.ts).toLocaleString()}] ${m.me ? S.me.name : u.name}: ${m.i ? '[photo]' : m.x}`);
+      lines.push('');
+    }
+    if (!lines.length) return toast(t('There are no chats to export'));
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([lines.join('\n')], { type: 'text/plain;charset=utf-8' }));
+    a.download = `${SITE().toLowerCase()}-chats-${new Date().toISOString().slice(0, 10)}.txt`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  }
+
+  // ---- QR scanning (camera + the browser's built-in barcode reader) ----
+  let scanStream = null, scanTimer = 0;
+  async function startScan() {
+    const dlg = $('scanDlg'), msg = $('scanMsg'), vid = $('scanVid');
+    msg.textContent = ''; vid.hidden = true;
+    dlg.showModal();
+    if (!('BarcodeDetector' in window) || !navigator.mediaDevices) {
+      msg.textContent = t("This browser can't scan codes. Open your phone's camera app and point it at the code: it opens the chat directly.");
+      return;
+    }
+    try {
+      scanStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+      vid.srcObject = scanStream; vid.hidden = false; await vid.play();
+      msg.textContent = t('Point the camera at a QR code');
+      const det = new BarcodeDetector({ formats: ['qr_code'] });
+      const tick = async () => {
+        if (!dlg.open) return;
+        try {
+          const [code] = await det.detect(vid);
+          if (code) return onScanned(code.rawValue);
+        } catch {}
+        scanTimer = setTimeout(tick, 250);
+      };
+      tick();
+    } catch { msg.textContent = t('Camera access was refused.'); }
+  }
+  function stopScan() { clearTimeout(scanTimer); if (scanStream) scanStream.getTracks().forEach(tr => tr.stop()); scanStream = null; }
+  $('scanDlg').addEventListener('close', stopScan);
+  function onScanned(value) {
+    $('scanDlg').close();
+    let name = null;
+    try { const u = new URL(value); if (u.origin === location.origin) name = u.searchParams.get('chat'); } catch {}
+    if (!name) return toast(t('That is not a chat code from this site'));
+    openChatLink(name);
+  }
+  function openChatLink(name) {
+    if (S.me && name.toLowerCase() === S.me.name.toLowerCase()) return toast(t('That is your own code'));
+    const u = [...S.users.values()].find(x => !x.ghost && x.name.toLowerCase() === name.toLowerCase());
+    if (u) openChat(u.id); else toast(`${name} ${t("isn't online right now")}`);
+  }
+
+  // ---- screen lock ----
+  async function pinHash(pin) {
+    const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode((prefs.pinSalt || '') + ':' + pin));
+    return Array.from(new Uint8Array(buf), b => b.toString(16).padStart(2, '0')).join('');
+  }
+  let lockFails = 0, lockUntil = 0;
+  function lockScreen() {
+    if (!prefs.pin || !S.me) return;
+    $('lockScr').hidden = false; $('lockErr').textContent = ''; $('lockPin').value = '';
+    toggleStatusMenu(false); $('emojiPop').hidden = true;
+    setTimeout(() => $('lockPin').focus(), 30);
+  }
+  $('lockForm').addEventListener('submit', async e => {
+    e.preventDefault();
+    if (Date.now() < lockUntil) return ($('lockErr').textContent = t('Too many tries. Wait a moment.'));
+    if ((await pinHash($('lockPin').value.trim())) === prefs.pin) { lockFails = 0; $('lockScr').hidden = true; lastAct = Date.now(); return; }
+    $('lockPin').value = '';
+    if (++lockFails >= 5) { lockFails = 0; lockUntil = Date.now() + 30000; }
+    $('lockErr').textContent = t('Wrong PIN');
+  });
+  $('lockLeave').onclick = () => { if (confirm(t('Leave the chat? All your chats are deleted.'))) { prefs.pin = null; savePrefs(); $('lockScr').hidden = true; $('logoutBtn').click(); } };
+  let lastAct = Date.now(), hiddenAt = 0;
+  ['pointerdown', 'keydown', 'touchstart'].forEach(ev => document.addEventListener(ev, () => { if ($('lockScr').hidden) lastAct = Date.now(); }, { capture: true, passive: true }));
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) hiddenAt = Date.now();
+    else if (prefs.pin && prefs.lockAfter && hiddenAt && Date.now() - hiddenAt >= prefs.lockAfter * 60000) lockScreen();
+  });
+  setInterval(() => { if (prefs.pin && prefs.lockAfter && $('lockScr').hidden && Date.now() - lastAct >= prefs.lockAfter * 60000) lockScreen(); }, 15000);
+
+  // ---- desktop notifications for private messages ----
+  function notifyDesktop(from, msg) {
+    if (!prefs.desktop || !document.hidden || dnd() || !('Notification' in window) || Notification.permission !== 'granted') return;
+    const u = S.users.get(from);
+    if (!u) return;
+    try {
+      const n = new Notification(u.name, { body: prefs.previews ? (msg.i ? '📷 ' + t('Photo') : msg.x || '') : t('New message'), tag: 'pm-' + from });
+      n.onclick = () => { window.focus(); openChat(from); n.close(); };
+    } catch {}
+  }
+
+  // ---- language: English / Arabic (right-to-left) ----
+  const AR = {
+    'People': 'الأشخاص', 'Rooms': 'الغرف', 'Inbox': 'الوارد', 'History': 'السجل', 'Search': 'بحث', 'Friends': 'الأصدقاء', 'Settings': 'الإعدادات',
+    'Recent chats': 'المحادثات الأخيرة', 'Online now': 'متصل الآن', 'All': 'الكل', 'Female': 'أنثى', 'Male': 'ذكر', 'Type a message…': 'اكتب رسالة…',
+    'Account': 'الحساب', 'Profile info': 'معلومات الملف الشخصي', 'QR Code': 'رمز QR', 'Share your code or scan one': 'شارك رمزك أو امسح رمزًا',
+    'Privacy': 'الخصوصية', 'Who can message you': 'من يمكنه مراسلتك', 'Security': 'الأمان', 'Password and screen lock': 'كلمة المرور وقفل الشاشة',
+    'Preferences': 'التفضيلات', 'Notifications': 'الإشعارات', 'Message alerts and sounds': 'تنبيهات الرسائل والأصوات', 'Chats': 'المحادثات',
+    'Live typing, history and backup': 'الكتابة المباشرة والسجل والنسخ', 'Appearance': 'المظهر', 'Theme and text size': 'السمة وحجم الخط',
+    'Language': 'اللغة', 'App language': 'لغة التطبيق', 'Leave chat': 'مغادرة الدردشة', 'Delete all your chats and sign out': 'حذف كل محادثاتك والخروج',
+    'Guest · tap to create a profile': 'زائر · اضغط لإنشاء ملف شخصي', 'On': 'مفعّل', 'Off': 'متوقف', 'Everyone': 'الجميع',
+    'Registered profiles': 'الملفات المسجلة', 'Friends only': 'الأصدقاء فقط', 'Light': 'فاتح', 'Dark': 'داكن', 'System': 'النظام', 'Back': 'رجوع',
+    'Who can message me': 'من يمكنه مراسلتي', 'Anyone in the chat can start a chat with you': 'يمكن لأي شخص بدء محادثة معك',
+    'Only people with a ✓ profile': 'فقط من لديهم ملف ✓', 'Only your friends (needs a profile)': 'أصدقاؤك فقط (يتطلب ملفًا شخصيًا)',
+    'People you are already chatting with can always reply.': 'يمكن لمن تتحدث معهم الرد دائمًا.', 'Read receipts': 'إيصالات القراءة',
+    'Let people see when you have read their messages': 'اسمح للآخرين بمعرفة أنك قرأت رسائلهم', 'Online status': 'حالة الاتصال',
+    'Password': 'كلمة المرور', 'Change password': 'تغيير كلمة المرور', 'For your registered profile': 'لملفك المسجل',
+    'Guests have no password. Create a profile to keep your name with a password.': 'الزوار ليس لديهم كلمة مرور. أنشئ ملفًا شخصيًا للاحتفاظ باسمك.',
+    'Create a profile': 'إنشاء ملف شخصي', 'Screen lock': 'قفل الشاشة', 'Lock now': 'اقفل الآن', 'Lock automatically': 'القفل التلقائي', 'Never': 'أبدًا',
+    'After 1 minute away': 'بعد دقيقة من الغياب', 'After 5 minutes away': 'بعد 5 دقائق من الغياب', 'After 15 minutes away': 'بعد 15 دقيقة من الغياب',
+    'Current PIN': 'الرمز الحالي', 'Turn off screen lock': 'إيقاف قفل الشاشة', 'New PIN (4–8 digits)': 'رمز جديد (4–8 أرقام)', 'Repeat PIN': 'أعد الرمز',
+    'Turn on screen lock': 'تفعيل قفل الشاشة', 'The screen lock protects this device only. Your chats are still deleted when you leave.': 'قفل الشاشة يحمي هذا الجهاز فقط. تُحذف محادثاتك عند المغادرة.',
+    'Message sound': 'صوت الرسائل', 'Play a sound for new private messages': 'تشغيل صوت للرسائل الخاصة الجديدة', 'Desktop notifications': 'إشعارات سطح المكتب',
+    'Show a notification when the tab is in the background': 'إظهار إشعار عندما تكون الصفحة في الخلفية', 'Show message text': 'إظهار نص الرسالة',
+    'Include the message in notifications': 'تضمين الرسالة في الإشعارات', 'Pop-ups': 'النوافذ المنبثقة', 'Friend requests and other notices': 'طلبات الصداقة والتنبيهات الأخرى',
+    'Do not disturb (in your status) mutes all of these.': 'وضع عدم الإزعاج يكتم كل هذا.', 'Live typing': 'الكتابة المباشرة',
+    'The other person sees your text as you type': 'يرى الطرف الآخر ما تكتبه أثناء الكتابة', 'Enter to send': 'الإرسال بزر Enter',
+    'When off, use the send button': 'عند الإيقاف استخدم زر الإرسال', 'History and backup': 'السجل والنسخ الاحتياطي', 'Export chats (.txt)': 'تصدير المحادثات (.txt)',
+    'Clear all chats': 'مسح كل المحادثات', 'Chats are never saved on the server. Export them if you want to keep a copy.': 'لا تُحفظ المحادثات على الخادم. صدّرها للاحتفاظ بنسخة.',
+    'Theme': 'السمة', 'Follow your device setting': 'حسب إعداد جهازك', 'Text size': 'حجم النص', 'Small': 'صغير', 'Normal': 'عادي', 'Large': 'كبير', 'Arabic': 'العربية',
+    'Anyone who scans this code opens a chat with you while you are online.': 'من يمسح هذا الرمز يفتح محادثة معك أثناء اتصالك.',
+    'Copy link': 'نسخ الرابط', 'Share': 'مشاركة', 'Scan a code': 'مسح رمز', 'Close': 'إغلاق', 'Link copied': 'تم نسخ الرابط', 'Unlock': 'فتح',
+    'Chat is locked': 'الدردشة مقفلة', 'Enter your PIN to continue': 'أدخل الرمز للمتابعة', 'Forgot your PIN? Leave the chat': 'نسيت الرمز؟ غادر الدردشة', 'Wrong PIN': 'رمز خاطئ',
+    'Join a room to chat with everyone in it. Your private chats keep working.': 'انضم إلى غرفة للدردشة مع الجميع. محادثاتك الخاصة تستمر.',
+    'Messages people have sent you during this visit.': 'الرسائل التي أرسلها لك الآخرون خلال هذه الزيارة.',
+    "Every chat from this visit, including people who have left. It's all deleted when you leave.": 'كل محادثات هذه الزيارة، بما فيها من غادروا. تُحذف كلها عند مغادرتك.',
+    '1-to-1 chat': 'محادثة فردية', 'Private chats with one person at a time': 'محادثات خاصة مع شخص واحد في كل مرة',
+    'Tap someone in People to start a private chat, or open Rooms to join a group chat.': 'اضغط على شخص في قائمة الأشخاص لبدء محادثة خاصة، أو افتح الغرف للانضمام إلى محادثة جماعية.',
+    'Username': 'اسم المستخدم', 'All Countries': 'كل الدول', 'Age': 'العمر', 'to': 'إلى',
+  };
+  function t(s) { return (prefs.lang === 'ar' && AR[s]) || s; }
+  function applyLang() {
+    const ar = prefs.lang === 'ar';
+    $('app').dir = ar ? 'rtl' : 'ltr';
+    $('app').lang = ar ? 'ar' : 'en';
+    for (const b of $('sideNav').children) { const l = b.querySelector('span:not(.ic)'); if (l) l.textContent = t(PANE_TITLES[b.dataset.pane]); }
+    $('paneTitle').textContent = t(PANE_TITLES[pane]);
+    $('text').placeholder = t('Type a message…');
+    for (const b of $('tabs').children) b.firstChild.textContent = (b.dataset.f === 'all' ? t('All') : (b.dataset.f === 'f' ? '♀ ' + t('Female') : '♂ ' + t('Male'))) + ' ';
+    document.querySelector('#recentWrap .sec-h').textContent = t('Recent chats');
+    document.querySelector('.list-h').textContent = t('Online now');
+    for (const el of document.querySelectorAll('.pane-note')) { el.dataset.en = el.dataset.en || el.textContent; el.textContent = t(el.dataset.en); }
+    for (const el of document.querySelectorAll('#lockScr [data-i18n], #scanDlg [data-i18n]')) el.textContent = t(el.dataset.i18n);
+    $('sName').placeholder = t('Username');
+    document.querySelector('.search-btn').textContent = t('Search');
+    if (pane === 'settings' && !$('setMain').hidden) renderSettings();
+    if (S.me && S.active == null) openDefault();
+  }
+
+  // Settings → Chats → Enter to send (off: only the send button sends)
+  $('text').addEventListener('keydown', e => { if (e.key === 'Enter' && !prefs.enterSend) e.preventDefault(); });
+  // apply saved preferences
+  $('app').dataset.fs = prefs.fontSize;
+  applyLang();
 
   let toastTimer;
   function toast(text) {
