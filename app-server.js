@@ -83,6 +83,46 @@ function themeAssets(t) {
     logoHtml: t.logoImage ? `<img src="/media/logo?v=${t.logoImage.v}" alt="">` : Theme.DEFAULT_LOGO,
   };
 }
+// Search-engine tags: title, description, canonical link, social previews (Open Graph / X) and structured data.
+function seoValues(t) {
+  const name = t.brandMain + t.brandAccent;
+  const title = t.seoTitle || name, desc = t.seoDesc || t.description;
+  const base = t.siteUrl;
+  const img = base && t.heroImage ? `${base}/media/hero?v=${t.heroImage.v}` : '';
+  const head = [
+    `<meta name="description" content="${escHtml(desc)}">`,
+    '<meta name="robots" content="index, follow, max-image-preview:large">',
+    base ? `<link rel="canonical" href="${escHtml(base)}/">` : '',
+    `<meta property="og:type" content="website">`,
+    `<meta property="og:site_name" content="${escHtml(name)}">`,
+    `<meta property="og:title" content="${escHtml(title)}">`,
+    `<meta property="og:description" content="${escHtml(desc)}">`,
+    base ? `<meta property="og:url" content="${escHtml(base)}/">` : '',
+    img ? `<meta property="og:image" content="${escHtml(img)}">` : '',
+    `<meta name="twitter:card" content="${img ? 'summary_large_image' : 'summary'}">`,
+    `<meta name="twitter:title" content="${escHtml(title)}">`,
+    `<meta name="twitter:description" content="${escHtml(desc)}">`,
+    // JSON-LD: < is escaped so text can't close the script tag
+    `<script type="application/ld+json">${JSON.stringify({
+      '@context': 'https://schema.org', '@type': 'WebApplication', name, description: desc, ...(base ? { url: base + '/' } : {}),
+      applicationCategory: 'CommunicationApplication', operatingSystem: 'Any', inLanguage: ['en', 'ar'],
+      offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
+    }).replace(/</g, '\\u003c')}</script>`,
+  ].filter(Boolean).join('\n');
+  const paras = String(t.seoText || '').split(/\n+/).filter(Boolean)
+    .map(p => `<p${/[\u0600-\u06ff]/.test(p) ? ' dir="rtl" lang="ar"' : ''}>${escHtml(p)}</p>`).join('');
+  const about = t.seoHeading || paras ? `<section class="seo-about">${t.seoHeading ? `<h1>${escHtml(t.seoHeading)}</h1>` : ''}${paras}</section>` : '';
+  return { seoTitle: escHtml(title), seoHead: head, seoAbout: about };
+}
+/** Public address for robots.txt / sitemap.xml: the admin's "Site address", else the request's host. */
+function siteBase(req) {
+  const t = theme.all();
+  if (t.siteUrl) return t.siteUrl;
+  const host = String(req.headers['x-forwarded-host'] || req.headers.host || '').split(',')[0].trim();
+  if (!/^[a-z0-9.-]+(:\d+)?$/i.test(host)) return '';
+  const proto = TRUST_PROXY ? String(req.headers['x-forwarded-proto'] || 'https').split(',')[0].trim() : (req.socket.encrypted ? 'https' : 'http');
+  return `${proto === 'http' ? 'http' : 'https'}://${host}`;
+}
 function renderIndex() {
   const t = theme.all();
   const { heroUrl, logoHtml } = themeAssets(t);
@@ -91,6 +131,7 @@ function renderIndex() {
     brandMain: escHtml(t.brandMain), brandAccent: escHtml(t.brandAccent), tagline: escHtml(t.tagline),
     description: escHtml(t.description), buttonText: escHtml(t.buttonText),
     heroUrl: escHtml(heroUrl), heroClass: !t.showHero ? 'off' : t.heroImage ? '' : 'default', patternClass: t.showPattern ? 'pattern' : '', logoHtml,
+    ...seoValues(t),
   };
   const body = Buffer.from(INDEX_TEMPLATE.replace(/\{\{(\w+)\}\}/g, (m, k) => (k in values ? values[k] : m)));
   const f = { body, gz: zlib.gzipSync(body), etag: `"${hashOf(body)}"`, type: TYPES['.html'] };
@@ -302,6 +343,14 @@ const server = http.createServer((req, res) => {
   if (url.pathname === '/challenge') {
     res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
     return res.end(JSON.stringify(captcha.challenge(clientIp(req))));
+  }
+  if (url.pathname === '/robots.txt' || url.pathname === '/sitemap.xml') {
+    const base = siteBase(req);
+    const body = url.pathname === '/robots.txt'
+      ? `User-agent: *\nAllow: /\nDisallow: /admin\nDisallow: /api/\nDisallow: /avatar/\n${base ? `\nSitemap: ${base}/sitemap.xml\n` : ''}`
+      : `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><url><loc>${escHtml(base)}/</loc><changefreq>daily</changefreq><priority>1.0</priority></url></urlset>\n`;
+    res.writeHead(200, { 'content-type': url.pathname === '/robots.txt' ? 'text/plain; charset=utf-8' : 'application/xml; charset=utf-8', 'cache-control': 'public, max-age=3600' });
+    return res.end(body);
   }
   if (url.pathname === '/health') {
     res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });

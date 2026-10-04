@@ -137,6 +137,10 @@ input, select { font: inherit; color: inherit; }
 .fine { margin: 2px 0 0; text-align: center; color: var(--muted); font-size: 12px; }
 .credit { font-size: 10.5px; color: color-mix(in srgb, var(--muted) 45%, var(--bg)); text-decoration: none; margin-top: 18px; }
 .credit:hover { color: var(--muted); }
+/* short "about" text under the login card: what search engines read */
+.seo-about { width: min(440px, 100%); margin: 26px 0 8px; padding: 0 6px; text-align: center; color: var(--muted); font-size: 13px; line-height: 1.6; flex: none; }
+.seo-about h1 { margin: 0 0 8px; font-size: 16px; font-weight: 600; letter-spacing: -.01em; color: var(--text); }
+.seo-about p { margin: 0 0 8px; }
 
 .duo { display: grid; grid-template-columns: 1fr 160px; gap: 12px; align-items: end; } /* gender + age side by side */
 

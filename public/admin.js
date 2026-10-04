@@ -576,7 +576,7 @@
     ['primary', 'Main color', 'buttons & accents'], ['primary2', 'Main color, dark', 'gradients & shadows'],
     ['bg', 'Page background', ''], ['card', 'Card background', ''], ['text', 'Text', ''], ['muted', 'Secondary text', ''],
   ];
-  const TEXT_KEYS = ['brandMain', 'brandAccent', 'tagline', 'description', 'buttonText'];
+  const TEXT_KEYS = ['brandMain', 'brandAccent', 'tagline', 'description', 'buttonText', 'seoTitle', 'seoDesc', 'siteUrl', 'seoHeading', 'seoText'];
   let themeInfo = null, draft = null, formBuilt = false;
 
   async function loadAppearance() {

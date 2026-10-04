@@ -86,6 +86,13 @@ Guests can chat without signing up. On the login screen users can also **Log in*
 - **Friends:** registered users can add each other as friends. Tap the add-friend button next to anyone with a ✓ profile in **People** or **Search**, type their username in the box at the top of the **Friends** tab (works even when they are offline), or tap **＋ Add friend** in a chat. The other person gets a request (toast, sound and a badge on the ❤ **Friends** tab) and can accept or decline; mutual requests become friends instantly. The Friends tab lists requests, online friends (with a green dot, tap to chat), offline friends, and sent requests. Friends get a ❤ in the People list. Friendships are saved with the profiles (up to 500 friends and 100 pending requests, rate-limited). Guests are invited to create a profile.
 - **Admin → Accounts:** search profiles, remove a photo, clear a bio, or delete an account (if they're online, the user is removed from the chat).
 
+## Search engines (SEO)
+
+- The landing page has a keyword-rich `<title>` and meta description (English + Arabic: "شات عربي بدون تسجيل"), Open Graph and X/Twitter tags for link previews, `WebApplication` structured data (JSON-LD), and a short visible "about" section under the login card with an `<h1>`. Search engines need that readable text, because the rest of the page is a login form.
+- `/robots.txt` (allows everything except `/admin`, `/api/` and `/avatar/`) and `/sitemap.xml` are generated automatically. The admin panel has `noindex`.
+- Edit everything in **Admin → Appearance → Google & search engines**. Set **Site address** to your real domain (e.g. `https://www.chatex.com`), which turns on the canonical link and absolute URLs. Upload a corner picture to use it as the social preview image.
+- After deploying, add the site in [Google Search Console](https://search.google.com/search-console) and [Bing Webmaster Tools](https://www.bing.com/webmasters) and submit `https://your-domain/sitemap.xml`.
+
 ## Rooms (Admin → # Rooms)
 
 - **Create, edit, reorder and delete rooms.** Each room has a name, an optional description and an optional **password**.

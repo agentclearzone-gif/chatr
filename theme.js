@@ -17,6 +17,8 @@ const PRESETS = {
 const COLOR_KEYS = ['primary', 'primary2', 'bg', 'card', 'text', 'muted'];
 const TEXTS = { // key: [min, max]
   brandMain: [1, 24], brandAccent: [0, 24], tagline: [0, 60], description: [0, 300], buttonText: [1, 30],
+  // search engines: <title>, meta description, and the short visible "about" text under the login card
+  seoTitle: [0, 70], seoDesc: [0, 170], seoHeading: [0, 80], seoText: [0, 700],
 };
 const { label: _l, ...GOLD } = PRESETS.gold;
 const DEFAULTS = {
@@ -24,6 +26,11 @@ const DEFAULTS = {
   brandMain: 'Chate', brandAccent: 'X', tagline: 'CHAT • CONNECT • DUBAI',
   description: 'Free anonymous chat. Your chats are deleted as soon as you or the other person leaves. Moderators may review live chats to keep everyone safe.',
   buttonText: 'Start chatting',
+  seoTitle: 'ChateX – Free Arab Chat Rooms | شات عربي بدون تسجيل',
+  seoDesc: 'Free anonymous chat with people from the UAE, Saudi Arabia, Egypt, Qatar, Kuwait and the whole Arab world. Private 1-to-1 chat, rooms and photos. No sign-up.',
+  seoHeading: 'Free Arab chat rooms – meet new people instantly',
+  seoText: 'ChateX is a free, anonymous chat site for the Arab world and beyond. Pick a name and start chatting in seconds: private one-to-one chats, group rooms, photo sharing and emoji, with no app to install and no sign-up. Meet people from the UAE, Saudi Arabia, Egypt, Qatar, Kuwait, Oman, Bahrain, Jordan, Lebanon, Iraq, Morocco and more. Your chats are deleted as soon as you leave.\nشات عربي مجاني ودردشة بدون تسجيل: تعرّف على أصدقاء جدد من الإمارات والسعودية ومصر وقطر والكويت وكل الدول العربية.',
+  siteUrl: '',       // e.g. https://chatex.com: used for the canonical link, social previews and the sitemap
   showHero: true, showPattern: true,
   heroImage: null,   // { type, v } when an admin uploaded one (the bytes live in the store)
   logoImage: null,
@@ -56,10 +63,15 @@ class Theme {
         if (!/^#[0-9a-f]{6}$/i.test(v)) throw new Error(`${k} must be a color like #b8862f`);
         next[k] = v.toLowerCase();
       } else if (k in TEXTS) {
-        const s = String(v ?? '').replace(/[\x00-\x1f\x7f]/g, ' ').trim();
+        const raw = k === 'seoText' ? String(v ?? '').replace(/\r/g, '').replace(/\n{2,}/g, '\n') : String(v ?? ''); // seoText keeps line breaks (paragraphs)
+        const s = raw.replace(k === 'seoText' ? /[\x00-\x09\x0b-\x1f\x7f]/g : /[\x00-\x1f\x7f]/g, ' ').trim();
         const [lo, hi] = TEXTS[k];
         if (s.length < lo || s.length > hi) throw new Error(`${k} must be ${lo}–${hi} characters`);
         next[k] = s;
+      } else if (k === 'siteUrl') {
+        const s = String(v ?? '').trim().replace(/\/+$/, '');
+        if (s && !/^https?:\/\/[a-z0-9.-]+(:\d+)?$/i.test(s)) throw new Error('Site address must look like https://www.example.com');
+        next[k] = s.toLowerCase();
       } else if (k === 'showHero' || k === 'showPattern') {
         next[k] = v === true;
       } else if (k === 'preset') {
