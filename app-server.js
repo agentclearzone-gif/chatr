@@ -134,6 +134,7 @@ let imgStoreBytes = 0;
 let pmSeq = 0;                 // private message ids (read receipts)
 let nextId = 1;
 let pendingJoins = [];
+const pendingIdle = new Map(); // user id -> idle since (0 = active again), sent with the next tick
 let pendingLeaves = [];
 const pendingRoom = new Map(); // room id -> messages waiting for the next flush
 let roomCountsDirty = false;
@@ -532,6 +533,16 @@ function handle(ws, m) {
       send(to.ws, { t: 'draft', f: u.id, x });
       return;
     }
+    case 'idle': case 'act': {
+      // away status: the browser reports "idle for N ms" after a minute without activity, and "active" when they're back
+      if (!allow(u.idleBucket, 0.5, 6)) return;
+      const since = m.t === 'idle' ? Date.now() - Math.min(Math.max(+m.ago || 0, 0), 10 * 60000) : 0;
+      if (!since === !u.idleSince) return; // no change
+      u.idleSince = since;
+      u.tuple[8] = since;
+      pendingIdle.set(u.id, since);
+      return;
+    }
     case 'read': {
       // read receipt: "I've seen your messages up to id N" → tell the sender (blue ticks)
       const from = users.get(m.f);
@@ -644,7 +655,7 @@ function readProfile(m, ws) {
 /** What everyone's user list gets: [id, name, gender, age, state, country, registered, photo version] */
 function tupleOf(u) {
   const acct = u.acct && accounts.get(u.acct);
-  return [u.id, u.name, u.g, u.age, u.loc, u.cc, acct ? 1 : 0, (acct && acct.photoV) || 0];
+  return [u.id, u.name, u.g, u.age, u.loc, u.cc, acct ? 1 : 0, (acct && acct.photoV) || 0, u.idleSince || 0];
 }
 function myAccount(u) {
   const a = u.acct && accounts.get(u.acct);
@@ -717,7 +728,7 @@ async function join(ws, m) {
   clearTimeout(ws.joinTimer);
   const u = {
     id: nextId++, name: display, ...profile, ws, ip: ws.ip, ipcc: ws.ipcc, device, acct: acct ? acct.key : null, joined: Date.now(), msgCount: 0,
-    roomTimes: [], pmBucket: bucket(15), imgBucket: bucket(3), tyBucket: bucket(3), draftBucket: bucket(30), roomPwBucket: bucket(5), profileBucket: bucket(5), friendBucket: bucket(20), readBucket: bucket(20),
+    roomTimes: [], pmBucket: bucket(15), imgBucket: bucket(3), tyBucket: bucket(3), draftBucket: bucket(30), roomPwBucket: bucket(5), profileBucket: bucket(5), friendBucket: bucket(20), readBucket: bucket(20), idleBucket: bucket(6), idleSince: 0,
     blocked: new Set(), convoKeys: new Set(), rooms: new Set(),
   };
   u.tuple = tupleOf(u);
@@ -728,7 +739,7 @@ async function join(ws, m) {
   // batched delta (clients apply joins/leaves idempotently), so it is rebuilt at most once per tick.
   // Nobody is put in a room: people start in 1-to-1 mode and join rooms themselves.
   if (snapshot === null) snapshot = JSON.stringify(Array.from(users.values(), x => x.tuple));
-  ws.send('{"t":"welcome","live":' + settings.get('liveTyping') + ',"me":' + JSON.stringify(u.tuple) + ',"acct":' + JSON.stringify(myAccount(u)) +
+  ws.send('{"t":"welcome","now":' + Date.now() + ',"live":' + settings.get('liveTyping') + ',"me":' + JSON.stringify(u.tuple) + ',"acct":' + JSON.stringify(myAccount(u)) +
     (warn ? ',"warn":' + JSON.stringify(warn) : '') +
     ',"rooms":' + JSON.stringify(rooms.publicList()) + ',"rc":' + JSON.stringify(roomCounts()) + ',"in":[]' +
     ',"users":' + snapshot + '}');
@@ -890,6 +901,12 @@ setInterval(() => {
     const msg = JSON.stringify({ t: 'ud', j: pendingJoins, l: pendingLeaves });
     pendingJoins = [];
     pendingLeaves = [];
+    snapshot = null;
+    broadcast(msg);
+  }
+  if (pendingIdle.size) {
+    const msg = JSON.stringify({ t: 'ui', now: Date.now(), u: [...pendingIdle].filter(([id]) => users.has(id)) });
+    pendingIdle.clear();
     snapshot = null;
     broadcast(msg);
   }

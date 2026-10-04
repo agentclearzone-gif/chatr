@@ -15,12 +15,21 @@
     f: '<svg viewBox="0 0 64 64" aria-hidden="true"><path fill="#fff" d="M32 13c-7.6 0-12.6 5.8-12.6 13.6 0 5.6 1 9.4-2.4 13.4 3.3 1.3 6.6 1.1 9-.4 1.8 1.2 3.8 1.8 6 1.8s4.2-.6 6-1.8c2.4 1.5 5.7 1.7 9 .4-3.4-4-2.4-7.8-2.4-13.4C44.6 18.8 39.6 13 32 13z"/><path fill="#fff" d="M10 64c0-11.5 9.8-18.5 22-18.5S54 52.5 54 64z"/></svg>',
     m: '<svg viewBox="0 0 64 64" aria-hidden="true"><circle fill="#fff" cx="32" cy="26" r="11.5"/><path fill="#fff" d="M10 64c0-11.5 9.8-18.5 22-18.5S54 52.5 54 64z"/></svg>',
   };
-  // a gender string, or a user (registered users with a photo get their picture)
+  // a gender string, or a user (registered users with a photo get their picture; idle users get a 🌙 + "5m" badge)
   const avatar = x => {
     const g = typeof x === 'string' ? x : x.g;
-    if (typeof x === 'object' && x.photo) return `<div class="av ${g}"><img src="/avatar/${encodeURIComponent(x.name)}?v=${encodeURIComponent(x.photo)}" alt="" loading="lazy"></div>`;
-    return `<div class="av ${g}">${AVATAR[g]}</div>`;
+    const pic = typeof x === 'object' && x.photo
+      ? `<div class="av ${g}"><img src="/avatar/${encodeURIComponent(x.name)}?v=${encodeURIComponent(x.photo)}" alt="" loading="lazy"></div>`
+      : `<div class="av ${g}">${AVATAR[g]}</div>`;
+    const away = typeof x === 'object' && x.idle && S.users.has(x.id) ? awayFor(x.idle) : 0;
+    if (!away) return pic;
+    return `<div class="av-wrap">${pic}<span class="idle-badge" title="Away for ${awayLong(away)}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/></svg>${awayShort(away)}</span></div>`;
   };
+  // away durations use the server's clock (corrected for this device's clock difference)
+  let clockSkew = 0;
+  const awayFor = since => Math.max(60000, Date.now() + clockSkew - since);
+  const awayShort = ms => { const m = Math.floor(ms / 60000); return m < 60 ? m + 'm' : m < 1440 ? Math.floor(m / 60) + 'h' : Math.floor(m / 1440) + 'd'; };
+  const awayLong = ms => { const m = Math.floor(ms / 60000); return m < 60 ? `${m} minute${m === 1 ? '' : 's'}` : m < 1440 ? `${Math.floor(m / 60)} hour${m < 120 ? '' : 's'}` : `${Math.floor(m / 1440)} day${m < 2880 ? '' : 's'}`; };
   const vb = u => (u && u.reg ? '<span class="vbadge" title="Registered profile">✓</span>' : '');
   const subLine = u => [u.age + ' Yrs', u.loc, countryName(u.cc)].filter(Boolean).join(', ');
   const flagImg = u => `<img class="flag" src="${flagUrl(u.cc)}" srcset="${flagSrcset(u.cc)}" alt="${esc(countryName(u.cc))}" title="${esc(countryName(u.cc))}" loading="lazy" width="40" height="30">`;
@@ -253,7 +262,7 @@
     ws.onopen = () => ws.send(JSON.stringify({ t: 'join', ...profile, dev, cap, hp: $('fWebsite').value }));
     ws.onmessage = ev => {
       const m = JSON.parse(ev.data);
-      if (m.t === 'welcome') { joined = true; $('fPw').value = ''; regPhoto = null; $('fPhotoPrev').textContent = '📷'; onWelcome(m); return; }
+      if (m.t === 'welcome') { lastActive = Date.now(); reportedIdle = false; joined = true; $('fPw').value = ''; regPhoto = null; $('fPhotoPrev').textContent = '📷'; onWelcome(m); return; }
       if (m.t === 'err' && m.join) {
         if (m.code === 'captcha') {
           prepareCaptcha(); // that answer is used up
@@ -281,6 +290,7 @@
   const send = obj => { if (S.ws && S.ws.readyState === 1) { S.ws.send(JSON.stringify(obj)); return true; } return false; };
 
   function onWelcome(m) {
+    if (m.now) clockSkew = m.now - Date.now();
     S.liveAllowed = m.live !== false;
     S.me = toUser(m.me);
     S.users.clear();
@@ -338,7 +348,7 @@
     resetToLogin('You left the chat. All messages were deleted.');
   };
 
-  const toUser = t => ({ id: t[0], name: t[1], g: t[2], age: t[3], loc: t[4], cc: t[5], reg: t[6] === 1, photo: t[7] || 0 });
+  const toUser = t => ({ id: t[0], name: t[1], g: t[2], age: t[3], loc: t[4], cc: t[5], reg: t[6] === 1, photo: t[7] || 0, idle: t[8] || 0 });
   function addUser(t) {
     if (S.users.has(t[0]) || (S.me && t[0] === S.me.id)) return;
     const u = toUser(t); u.seq = ++S.seq;
@@ -444,6 +454,13 @@
         break;
       }
       case 'acct': onAccountReply(m); break;
+      case 'ui': { // people went idle / came back
+        if (m.now) clockSkew = m.now - Date.now();
+        for (const [id, since] of m.u) { const u = S.users.get(id); if (u) u.idle = since; }
+        markDirty(); schedulePanes();
+        if (S.active != null && !isRoom(S.active) && m.u.some(([id]) => id === S.active)) renderPeer();
+        break;
+      }
       case 'friends':
         S.fr = m; S.frSet = new Set(m.friends.map(f => f.name.toLowerCase()));
         markDirty(); schedulePanes();
@@ -1221,6 +1238,29 @@
     toast(m.op === 'claim' ? 'Profile created ✓ Log in with your name and password next time.' : 'Profile saved');
     if (m.e) setTimeout(() => toast(m.e), 2900);
   }
+
+  // ---------------- my own away status: idle after 1 minute without activity ----------------
+  const IDLE_AFTER = 60000;
+  let lastActive = Date.now(), reportedIdle = false;
+  function activity() {
+    lastActive = Date.now();
+    if (reportedIdle && S.me) { reportedIdle = false; send({ t: 'act' }); }
+  }
+  let moveThrottle = 0;
+  for (const ev of ['keydown', 'pointerdown', 'touchstart', 'wheel', 'focus']) window.addEventListener(ev, activity, { capture: true, passive: true });
+  window.addEventListener('pointermove', () => { const now = Date.now(); if (now - moveThrottle > 2000) { moveThrottle = now; activity(); } }, { passive: true });
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) activity(); });
+  setInterval(() => {
+    if (!S.me || reportedIdle) return;
+    const quiet = Date.now() - lastActive;
+    if (quiet >= IDLE_AFTER) { reportedIdle = true; send({ t: 'idle', ago: quiet }); }
+  }, 5000);
+  // keep the "5m" away labels current
+  setInterval(() => {
+    if (!S.me) return;
+    renderList(true); schedulePanes();
+    if (S.active != null && !isRoom(S.active)) renderPeer();
+  }, 30000);
 
   // ---------------- live theme preview (Admin → Appearance shows this page in an iframe) ----------------
   if (window.parent !== window) {
