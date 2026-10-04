@@ -121,6 +121,7 @@
       <button data-pane="inbox"><svg viewBox="0 0 24 24"><path d="M3.5 13.5 6 5.5h12l2.5 8v5a1.5 1.5 0 0 1-1.5 1.5H5a1.5 1.5 0 0 1-1.5-1.5z"/><path d="M3.5 13.5H8l1.5 2.5h5l1.5-2.5h4.5"/></svg><span>Inbox</span><b class="nb" id="nbInbox" hidden></b></button>
       <button data-pane="history"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg><span>History</span></button>
       <button data-pane="search"><svg viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5 21 21"/></svg><span>Search</span></button>
+      <button data-pane="friends"><svg viewBox="0 0 24 24"><path d="M12 20.5s-8-4.6-8-10.6A4.4 4.4 0 0 1 12 7.3a4.4 4.4 0 0 1 8 2.6c0 6-8 10.6-8 10.6z"/></svg><span>Friends</span><b class="nb" id="nbFriends" hidden></b></button>
     </nav>
 
     <div class="pane" id="pane-people">
@@ -156,6 +157,9 @@
       <div class="s-head" id="sHead" hidden></div>
       <div class="clist" id="sResults"></div>
     </div>
+    <div class="pane" id="pane-friends" hidden>
+      <div class="clist" id="friendsList"></div>
+    </div>
     <div class="pane" id="pane-history" hidden>
       <p class="pane-note">Every chat from this visit, including people who have left. It's all deleted when you leave.</p>
       <div class="clist" id="historyList"></div>
@@ -168,6 +172,7 @@
       <div class="peer" id="peer"></div>
       <div class="head-actions" id="headActions">
         <button class="leave-btn" id="leaveRoomBtn" type="button" hidden>Leave room</button>
+        <button class="friend-btn" id="friendBtn" type="button" hidden></button>
         <button class="icon-btn" id="blockBtn" title="Block user" aria-label="Block user">⛔</button>
         <button class="icon-btn" id="closeBtn" title="Close chat &amp; delete history" aria-label="Close chat">✕</button>
       </div>

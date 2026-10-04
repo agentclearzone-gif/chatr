@@ -67,7 +67,7 @@ Everything an admin changes is kept in `store.js`: the word filter, bans, anti-s
 ## How users chat
 
 - **1-to-1 mode by default:** after logging in, users aren't in any room. They tap someone in **People** to chat privately, and join group rooms from the **Rooms** tab if they want.
-- **Sidebar tabs:** **People** (quick search plus an **All / ♀ Female / ♂ Male** filter) · **Rooms** · **Inbox** · **History** · **Search**, with unread badges.
+- **Sidebar tabs:** **People** (quick search plus an **All / ♀ Female / ♂ Male** filter) · **Rooms** · **Inbox** · **History** · **Search** · **Friends**, with unread badges.
 - **Search:** find people online by username (partial match), gender (All / Female / Male) and country. The country list shows countries with people online first, with counts. Tap a result to start a private chat.
 - **Inbox:** everyone who has messaged you this visit, newest first, with how many messages they sent, the last one, and unread ones highlighted.
 - **History:** every chat from this visit, including people who have left. Those chats become read-only and are marked "left". Everything is deleted from the browser when *you* leave. Chats are never stored on the server, apart from the live moderation copy, which is deleted when either person leaves.
@@ -79,6 +79,7 @@ Guests can chat without signing up. On the login screen users can also **Log in*
 - Users edit their profile and change their password by tapping their name.
 - **Security:** passwords are salted scrypt hashes. Logging in to a username that doesn't exist takes as long as a wrong password. 8 wrong passwords per IP means a 15-minute wait. At most 3 new profiles per IP per hour, and sign-ups need the bot check. A profile can't be logged in twice at once, and guests can't use a registered name.
 - **Storage:** the `chat_accounts` table (PostgreSQL) or `data/accounts.json` plus `data/avatars/`. **On Render's free plan, set `DATABASE_URL`, or all profiles are lost when the server restarts.**
+- **Friends:** registered users can add each other as friends. Open a chat with a ✓ profile and tap **＋ Add friend**. The other person gets a request (toast, sound and a badge on the ❤ **Friends** tab) and can accept or decline; mutual requests become friends instantly. The Friends tab lists requests, online friends (with a green dot, tap to chat), offline friends, and sent requests. Friends get a ❤ in the People list. Friendships are saved with the profiles (up to 500 friends and 100 pending requests, rate-limited). Guests are invited to create a profile.
 - **Admin → Accounts:** search profiles, remove a photo, clear a bio, or delete an account (if they're online, the user is removed from the chat).
 
 ## Rooms (Admin → # Rooms)

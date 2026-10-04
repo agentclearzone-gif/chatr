@@ -33,6 +33,7 @@
     convos: new Map(),    // userId -> {msgs:[], unread, last}
     rooms: new Map(),     // roomId -> {id,name,desc,locked,count,joined,msgs:[],unread}
     joiningRoom: null,    // room the user asked to join (waiting for the server)
+    fr: { friends: [], reqIn: [], reqOut: [] }, frSet: new Set(), // friends (registered profiles only)
     active: null,         // 'r:<roomId>' for a room, a user id for a private chat, null for none
     filter: 'all', q: '',
     view: [], viewDirty: true,
@@ -317,6 +318,7 @@
   function resetToLogin(notice) {
     // Everything lives in memory only; drop it all.
     S.users.clear(); S.convos.clear(); S.rooms.clear(); S.active = null; S.joiningRoom = null; S.pendingAcks.clear(); S.acct = null;
+    S.fr = { friends: [], reqIn: [], reqOut: [] }; S.frSet = new Set();
     if ($('profDlg').open) $('profDlg').close();
     S.me = null; S.view = [];
     $('msgs').innerHTML = '';
@@ -349,6 +351,7 @@
         for (const t of m.j) addUser(t);
         for (const id of m.l) userLeft(id);
         markDirty();
+        if (pane === 'friends') schedulePanes();
         break;
       case 'room': {
         const r = S.rooms.get(m.r);
@@ -432,6 +435,16 @@
         break;
       }
       case 'acct': onAccountReply(m); break;
+      case 'friends':
+        S.fr = m; S.frSet = new Set(m.friends.map(f => f.name.toLowerCase()));
+        markDirty(); schedulePanes();
+        if (S.active != null && !isRoom(S.active)) renderPeer();
+        break;
+      case 'frev':
+        if (m.kind === 'request') { toast(`💌 ${m.name} sent you a friend request`); chime(); }
+        else if (m.kind === 'accepted') { toast(`❤️ ${m.name} is now your friend`); chime(); }
+        else if (m.kind === 'error') toast(m.e);
+        break;
     }
   }
 
@@ -579,6 +592,7 @@
     $('blockBtn').hidden = inRoom || gone;
     $('closeBtn').hidden = inRoom;
     $('closeBtn').title = 'Delete this chat';
+    renderFriendBtn(inRoom || gone ? null : (S.users.get(target) || null));
     $('leaveRoomBtn').hidden = !inRoom;
   }
 
@@ -898,7 +912,7 @@
       const c = S.convos.get(u.id);
       const unread = c && c.unread ? `<span class="badge">${c.unread > 99 ? '99+' : c.unread}</span>` : '';
       html += `<div class="row ${u.g}${S.active === u.id ? ' sel' : ''}" data-id="${u.id}" style="transform:translateY(${i * RH}px)">` +
-        `${avatar(u)}<div class="info"><div class="nm">${esc(u.name)}${vb(u)}</div><div class="sub">${esc(subLine(u))}</div></div>${unread}${flagImg(u)}</div>`;
+        `${avatar(u)}<div class="info"><div class="nm">${esc(u.name)}${vb(u)}${isFriend(u) ? '<span class="heart" title="Friend">❤</span>' : ''}</div><div class="sub">${esc(subLine(u))}</div></div>${unread}${flagImg(u)}</div>`;
     }
     if (!n) html = `<div class="empty">${S.q || S.filter !== 'all' ? 'No one matches.' : 'No one else is online yet.'}</div>`;
     // keep the spacer, replace rows
@@ -944,7 +958,7 @@
   function showPane(name) {
     pane = name;
     for (const b of $('sideNav').children) b.classList.toggle('on', b.dataset.pane === name);
-    for (const n of ['people', 'rooms', 'inbox', 'history', 'search']) $('pane-' + n).hidden = n !== name;
+    for (const n of ['people', 'rooms', 'inbox', 'history', 'search', 'friends']) $('pane-' + n).hidden = n !== name;
     if (name === 'search') fillSearchCountries();
     if (name === 'people') renderList(true);
     if (name === 'rooms') renderRooms();
@@ -955,7 +969,8 @@
   let panesRaf = 0;
   function schedulePanes() {
     if (panesRaf) return;
-    panesRaf = requestAnimationFrame(() => { panesRaf = 0; renderPanes(); });
+    // background tabs pause animation frames; use a timer there so badges (Inbox, Friends) still update
+    panesRaf = document.hidden ? setTimeout(() => { panesRaf = 0; renderPanes(); }, 50) : requestAnimationFrame(() => { panesRaf = 0; renderPanes(); });
   }
   const ago = ts => { const s = Math.round((Date.now() - ts) / 1000); return s < 60 ? 'now' : s < 3600 ? Math.round(s / 60) + 'm' : Math.round(s / 3600) + 'h'; };
   const preview = m => (m.i ? '📷 Photo' : m.x || '');
@@ -971,7 +986,8 @@
     // nav badges: unread private messages (Inbox) and unread room messages (Rooms)
     const unreadPm = convos.reduce((n, [, c]) => n + c.unread, 0);
     const unreadRooms = [...S.rooms.values()].reduce((n, r) => n + (r.joined ? r.unread : 0), 0);
-    for (const [id, n] of [['nbInbox', unreadPm], ['nbRooms', unreadRooms]]) { $(id).hidden = !n; $(id).textContent = n > 99 ? '99+' : n; }
+    for (const [id, n] of [['nbInbox', unreadPm], ['nbRooms', unreadRooms], ['nbFriends', S.fr.reqIn.length]]) { $(id).hidden = !n; $(id).textContent = n > 99 ? '99+' : n; }
+    if (pane === 'friends') renderFriends();
     if (pane === 'inbox') {
       const rows = convos.filter(([, c]) => c.lastIn).sort((a, b) => b[1].lastIn - a[1].lastIn);
       $('inboxList').innerHTML = rows.length ? rows.map(([id, c]) => {
@@ -1021,6 +1037,60 @@
   }
   $('searchForm').addEventListener('submit', e => { e.preventDefault(); runSearch(); });
   $('sResults').addEventListener('click', e => { const r = e.target.closest('[data-uid]'); if (r) openChat(+r.dataset.uid); });
+
+  // ---------------- friends (registered profiles) ----------------
+  const isFriend = u => u && u.reg && S.frSet.has(u.name.toLowerCase());
+  const inList = (list, u) => list.some(f => f.name.toLowerCase() === u.name.toLowerCase());
+  function renderFriendBtn(u) {
+    const b = $('friendBtn');
+    b.hidden = !u || !u.reg;
+    if (b.hidden) return;
+    b.className = 'friend-btn';
+    if (isFriend(u)) { b.textContent = '❤ Friends'; b.classList.add('done'); b.dataset.op = 'remove'; }
+    else if (inList(S.fr.reqIn, u)) { b.textContent = '✓ Accept friend'; b.classList.add('go'); b.dataset.op = 'accept'; }
+    else if (inList(S.fr.reqOut, u)) { b.textContent = 'Request sent'; b.classList.add('done'); b.dataset.op = 'cancel'; }
+    else { b.textContent = '＋ Add friend'; b.dataset.op = 'add'; }
+    b.dataset.name = u.name;
+  }
+  function friendAction(op, name) {
+    if (!S.acct) { toast('Create a profile to add friends'); openProfile(); return; }
+    if (op === 'remove' && !confirm(`Remove ${name} from your friends?`)) return;
+    if (op === 'cancel' && !confirm(`Cancel your friend request to ${name}?`)) return;
+    send({ t: 'fr', op, name });
+  }
+  $('friendBtn').onclick = () => friendAction($('friendBtn').dataset.op, $('friendBtn').dataset.name);
+
+  function renderFriends() {
+    const box = $('friendsList');
+    if (!S.acct) {
+      box.innerHTML = `<div class="empty-pane">❤️ Friends are for registered profiles.<br>Create a profile to add people as friends and see when they're online.<br><br><button class="pw-join" type="button" data-create>Create a profile</button></div>`;
+      return;
+    }
+    const online = new Map();
+    for (const u of S.users.values()) if (u.reg) online.set(u.name.toLowerCase(), u);
+    const row = (f, actions, extra = '') => {
+      const u = online.get(f.name.toLowerCase());
+      const who = u || { name: f.name, g: f.g, photo: f.photoV, reg: true, age: f.age, loc: f.loc, cc: f.cc };
+      return `<div class="crow${u ? '' : ' offline'}"${u ? ` data-uid="${u.id}"` : ''} data-name="${esc(f.name)}">${avatar(who)}
+        <div class="info"><div class="nm">${esc(f.name)}${vb(who)}${u ? ' <i class="on-dot" title="Online"></i>' : ''}</div><div class="pv">${extra || esc(subLine(who))}</div></div>
+        <div class="fr-actions">${actions}</div></div>`;
+    };
+    const on = S.fr.friends.filter(f => online.has(f.name.toLowerCase())), off = S.fr.friends.filter(f => !online.has(f.name.toLowerCase()));
+    let html = '';
+    if (S.fr.reqIn.length) html += `<div class="fsec">Friend requests (${S.fr.reqIn.length})</div>` + S.fr.reqIn.map(f => row(f, '<button class="ok" data-op="accept">Accept</button><button data-op="decline">Decline</button>', 'wants to be your friend')).join('');
+    html += `<div class="fsec">Online (${on.length})</div>` + (on.length ? on.map(f => row(f, '<button class="x" data-op="remove" title="Remove friend">✕</button>')).join('') : '<div class="empty-pane" style="padding:14px">No friends online right now.</div>');
+    if (off.length) html += `<div class="fsec">Offline (${off.length})</div>` + off.map(f => row(f, '<button class="x" data-op="remove" title="Remove friend">✕</button>')).join('');
+    if (S.fr.reqOut.length) html += `<div class="fsec">Sent requests (${S.fr.reqOut.length})</div>` + S.fr.reqOut.map(f => row(f, '<button data-op="cancel">Cancel</button>', 'waiting for them to accept')).join('');
+    if (!S.fr.friends.length && !S.fr.reqIn.length && !S.fr.reqOut.length) html += '<div class="empty-pane">No friends yet.<br>Open a chat with someone who has a ✓ profile and tap “＋ Add friend”.</div>';
+    box.innerHTML = html;
+  }
+  $('friendsList').addEventListener('click', e => {
+    if (e.target.closest('[data-create]')) return openProfile();
+    const b = e.target.closest('[data-op]'), r = e.target.closest('.crow');
+    if (b && r) return friendAction(b.dataset.op, r.dataset.name);
+    if (r && r.dataset.uid) openChat(+r.dataset.uid);
+    else if (r) toast(`${r.dataset.name} is offline`);
+  });
 
   // ---------------- profile card at the top of a chat with a registered user ----------------
   const profileCache = new Map();

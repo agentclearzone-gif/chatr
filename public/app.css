@@ -246,7 +246,7 @@ input, select { font: inherit; color: inherit; }
 .row.f { background: var(--female-bg); }
 .row.m { background: var(--male-bg); }
 /* sidebar sections: People · Rooms · Inbox · History */
-.side-nav { flex: none; display: grid; grid-template-columns: repeat(5, 1fr); border-bottom: 1px solid var(--line); background: var(--panel); }
+.side-nav { flex: none; display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); border-bottom: 1px solid var(--line); background: var(--panel); }
 .side-nav button { position: relative; border: 0; background: none; padding: 9px 2px 8px; display: grid; justify-items: center; gap: 3px;
   font-size: 12px; font-weight: 700; color: var(--muted); border-bottom: 2.5px solid transparent; }
 .side-nav button svg { width: 21px; height: 21px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
@@ -340,6 +340,21 @@ input, select { font: inherit; color: inherit; }
 .search-btn:active { transform: translateY(1px); }
 .s-head { padding: 9px 16px; font-size: 13px; font-weight: 700; color: var(--muted); border-bottom: 1px solid var(--line); flex: none; }
 .crow .flag { width: 32px; height: 24px; }
+
+/* friends */
+.fsec { padding: 10px 16px 6px; font-size: 12px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); }
+.crow .fr-actions { display: flex; gap: 6px; flex: none; }
+.fr-actions button { border: 1.5px solid var(--line); background: var(--card); border-radius: 999px; padding: 6px 12px; font-size: 12.5px; font-weight: 700; color: var(--text); }
+.fr-actions .ok { border: 0; color: #fff; background: linear-gradient(180deg, var(--primary), var(--primary-2)); }
+.fr-actions .x { width: 30px; height: 30px; padding: 0; color: var(--muted); }
+.on-dot { width: 9px; height: 9px; border-radius: 50%; background: #22a55a; box-shadow: 0 0 0 2px var(--card); display: inline-block; flex: none; }
+.crow.offline { opacity: .65; }
+.heart { color: #e0457b; font-size: 12px; margin-left: 4px; }
+.friend-btn { border: 1.5px solid var(--primary); background: var(--card); color: var(--primary-2); border-radius: 999px; padding: 7px 12px;
+  font-size: 13px; font-weight: 800; margin-right: 4px; white-space: nowrap; }
+.friend-btn.done { border-color: var(--line); color: var(--muted); }
+.friend-btn.go { border: 0; color: #fff; background: linear-gradient(180deg, var(--primary), var(--primary-2)); }
+@container side (max-width: 360px) { .side-nav button { font-size: 10.5px; } .side-nav button svg { width: 19px; height: 19px; } }
 
 /* rooms list (sidebar) */
 .rooms { flex: none; border-bottom: 1px solid var(--line); }

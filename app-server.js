@@ -200,7 +200,8 @@ const adminApi = createAdminApi({
       else if (action === 'bio') accounts.update(a, { bio: '' });
       else if (action === 'delete') {
         accounts.remove(a.key);
-        if (u) { u.acct = null; kickUser(u, 'Your profile was removed by a moderator.'); }
+        dropFromFriendLists(a.key);
+        if (u) { onlineAccts.delete(a.key); u.acct = null; kickUser(u, 'Your profile was removed by a moderator.'); }
         return true;
       }
       if (u) refreshUser(u);
@@ -456,6 +457,8 @@ function handle(ws, m) {
     }
     case 'rjoin':
       return roomJoinRequest(ws, u, m).catch(e => console.error('[rjoin]', e));
+    case 'fr':
+      return friendRequest(ws, u, m);
     case 'claim': case 'profile': case 'pwchange':
       return profileRequest(ws, u, m).catch(e => console.error('[profile]', e));
     case 'rleave': {
@@ -707,7 +710,7 @@ async function join(ws, m) {
   clearTimeout(ws.joinTimer);
   const u = {
     id: nextId++, name: display, ...profile, ws, ip: ws.ip, ipcc: ws.ipcc, device, acct: acct ? acct.key : null, joined: Date.now(), msgCount: 0,
-    roomTimes: [], pmBucket: bucket(15), imgBucket: bucket(3), tyBucket: bucket(3), draftBucket: bucket(30), roomPwBucket: bucket(5), profileBucket: bucket(5),
+    roomTimes: [], pmBucket: bucket(15), imgBucket: bucket(3), tyBucket: bucket(3), draftBucket: bucket(30), roomPwBucket: bucket(5), profileBucket: bucket(5), friendBucket: bucket(20),
     blocked: new Set(), convoKeys: new Set(), rooms: new Set(),
   };
   u.tuple = tupleOf(u);
@@ -724,12 +727,80 @@ async function join(ws, m) {
     ',"users":' + snapshot + '}');
 
   users.set(u.id, u);
+  if (u.acct) { onlineAccts.set(u.acct, u); pushFriends(u.acct); }
   names.add(display.toLowerCase());
   pendingJoins.push(u.tuple);
 
   stats.totalJoins++;
   stats.countryJoins.set(u.cc, (stats.countryJoins.get(u.cc) || 0) + 1);
   if (users.size > stats.peak.n) stats.peak = { n: users.size, ts: Date.now() };
+}
+
+// ---------- friends (registered profiles only; saved with the accounts) ----------
+const onlineAccts = new Map(); // account key -> online user
+const MAX_FRIENDS = 500, MAX_PENDING = 100;
+const lists = a => { a.friends = a.friends || []; a.reqIn = a.reqIn || []; a.reqOut = a.reqOut || []; return a; };
+const without = (arr, k) => arr.filter(x => x !== k);
+function friendState(acct) {
+  const info = k => { const a = accounts.get(k); return a && { name: a.name, g: a.g, age: a.age, cc: a.cc, loc: a.loc, photoV: a.photoV || 0 }; };
+  const l = lists(acct);
+  return { t: 'friends', friends: l.friends.map(info).filter(Boolean), reqIn: l.reqIn.map(info).filter(Boolean), reqOut: l.reqOut.map(info).filter(Boolean) };
+}
+function pushFriends(key) {
+  const u = onlineAccts.get(key), a = accounts.get(key);
+  if (u && a) send(u.ws, friendState(a));
+}
+function dropFromFriendLists(key) {
+  for (const a of accounts.list()) {
+    if (!a.friends && !a.reqIn && !a.reqOut) continue;
+    const l = lists(a), n = l.friends.length + l.reqIn.length + l.reqOut.length;
+    a.friends = without(l.friends, key); a.reqIn = without(l.reqIn, key); a.reqOut = without(l.reqOut, key);
+    if (a.friends.length + a.reqIn.length + a.reqOut.length !== n) { accounts.update(a, {}); pushFriends(a.key); }
+  }
+}
+function friendRequest(ws, u, m) {
+  const fail = e => send(ws, { t: 'frev', kind: 'error', e });
+  const me = u.acct && accounts.get(u.acct);
+  if (!me) return fail('Create a profile to add friends.');
+  const other = accounts.get(m.name);
+  if (!other) return fail('Only registered profiles can be added as friends.');
+  if (other === me) return fail('That\'s you!');
+  if (!allow(u.friendBucket, 0.2, 20)) return fail('Too many friend actions. Please wait a minute.');
+  lists(me); lists(other);
+  const notify = (to, kind) => { const t = onlineAccts.get(to.key); if (t) send(t.ws, { t: 'frev', kind, name: (to === other ? me : other).name }); };
+  const becomeFriends = () => {
+    me.friends = [...without(me.friends, other.key), other.key]; other.friends = [...without(other.friends, me.key), me.key];
+    me.reqIn = without(me.reqIn, other.key); me.reqOut = without(me.reqOut, other.key);
+    other.reqIn = without(other.reqIn, me.key); other.reqOut = without(other.reqOut, me.key);
+  };
+  switch (m.op) {
+    case 'add':
+      if (me.friends.includes(other.key)) return pushFriends(me.key);
+      if (me.reqIn.includes(other.key)) { becomeFriends(); notify(other, 'accepted'); break; } // they already asked → friends
+      if (me.reqOut.includes(other.key)) return pushFriends(me.key);
+      if (me.friends.length >= MAX_FRIENDS) return fail(`You can have up to ${MAX_FRIENDS} friends.`);
+      if (me.reqOut.length >= MAX_PENDING || other.reqIn.length >= MAX_PENDING) return fail('Too many pending friend requests.');
+      me.reqOut.push(other.key); other.reqIn.push(me.key);
+      notify(other, 'request');
+      break;
+    case 'accept':
+      if (!me.reqIn.includes(other.key)) return pushFriends(me.key);
+      if (me.friends.length >= MAX_FRIENDS) return fail(`You can have up to ${MAX_FRIENDS} friends.`);
+      becomeFriends(); notify(other, 'accepted');
+      break;
+    case 'decline':
+      me.reqIn = without(me.reqIn, other.key); other.reqOut = without(other.reqOut, me.key);
+      break;
+    case 'cancel':
+      me.reqOut = without(me.reqOut, other.key); other.reqIn = without(other.reqIn, me.key);
+      break;
+    case 'remove':
+      me.friends = without(me.friends, other.key); other.friends = without(other.friends, me.key);
+      break;
+    default: return;
+  }
+  accounts.update(me, {}); accounts.update(other, {});
+  pushFriends(me.key); pushFriends(other.key);
 }
 
 // ---------- profile management while online ----------
@@ -745,6 +816,8 @@ async function profileRequest(ws, u, m) {
     try { acct = await accounts.register(u.name, m.pw, { g: u.g, age: u.age, loc: u.loc, cc: u.cc }, m.bio); } catch (e) { return reply(false, e.message); }
     bump(registrations, u.ip, 3600000);
     u.acct = acct.key;
+    onlineAccts.set(acct.key, u);
+    pushFriends(acct.key);
     let warn;
     if (typeof m.photo === 'string' && m.photo) try { accounts.setPhoto(acct, m.photo); } catch (e) { warn = e.message; }
     refreshUser(u);
@@ -777,6 +850,7 @@ function leave(ws) {
   ws.user = null;
   users.delete(u.id);
   names.delete(u.name.toLowerCase());
+  if (u.acct && onlineAccts.get(u.acct) === u) onlineAccts.delete(u.acct);
   pendingLeaves.push(u.id);
   for (const id of [...u.rooms]) leaveRoom(u, id);
 
