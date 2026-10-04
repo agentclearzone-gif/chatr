@@ -8,6 +8,7 @@
 const crypto = require('crypto');
 
 const PRESETS = {
+  violet:  { label: 'Violet',        primary: '#5b3df5', primary2: '#3b1fc1', bg: '#f7f7fb', card: '#ffffff', text: '#0f1222', muted: '#6b7280' },
   gold:    { label: 'Dubai Gold',    primary: '#b8862f', primary2: '#8a611d', bg: '#f4ede2', card: '#fffdf9', text: '#1f1a14', muted: '#6b6358' },
   rose:    { label: 'Rose',          primary: '#e91e63', primary2: '#c2185b', bg: '#f5f6fa', card: '#ffffff', text: '#111827', muted: '#4b5563' },
   emerald: { label: 'Emerald Oasis', primary: '#0f7b5f', primary2: '#0a5a45', bg: '#edf4f0', card: '#ffffff', text: '#10231c', muted: '#56675f' },
@@ -20,9 +21,9 @@ const TEXTS = { // key: [min, max]
   // search engines: <title>, meta description, and the short visible "about" text under the login card
   seoTitle: [0, 70], seoDesc: [0, 170], seoHeading: [0, 80], seoText: [0, 700],
 };
-const { label: _l, ...GOLD } = PRESETS.gold;
+const { label: _l, ...VIOLET } = PRESETS.violet;
 const DEFAULTS = {
-  preset: 'gold', ...GOLD,
+  preset: 'violet', ...VIOLET,
   brandMain: 'Chate', brandAccent: 'X', tagline: 'CHAT • CONNECT • DUBAI',
   description: 'Free anonymous chat. Your chats are deleted as soon as you or the other person leaves. Moderators may review live chats to keep everyone safe.',
   buttonText: 'Start chatting',
@@ -31,7 +32,7 @@ const DEFAULTS = {
   seoHeading: 'Free Arab chat rooms – meet new people instantly',
   seoText: 'ChateX is a free, anonymous chat site for the Arab world and beyond. Pick a name and start chatting in seconds: private one-to-one chats, group rooms, photo sharing and emoji, with no app to install and no sign-up. Meet people from the UAE, Saudi Arabia, Egypt, Qatar, Kuwait, Oman, Bahrain, Jordan, Lebanon, Iraq, Morocco and more. Your chats are deleted as soon as you leave.\nشات عربي مجاني ودردشة بدون تسجيل: تعرّف على أصدقاء جدد من الإمارات والسعودية ومصر وقطر والكويت وكل الدول العربية.',
   siteUrl: '',       // e.g. https://chatex.com: used for the canonical link, social previews and the sitemap
-  showHero: true, showPattern: true,
+  showHero: false, showPattern: true,
   heroImage: null,   // { type, v } when an admin uploaded one (the bytes live in the store)
   logoImage: null,
 };
@@ -47,7 +48,13 @@ class Theme {
     if (renamed) Object.assign(saved, { brandMain: DEFAULTS.brandMain, brandAccent: DEFAULTS.brandAccent });
     this.values = { ...DEFAULTS };
     try { this.apply(saved); } catch {}
-    if (renamed) this.save();
+    // new violet design (matches the chat app): sites still on the old Dubai Gold default switch once
+    if (!saved.violetDesign) {
+      if (!saved.preset || saved.preset === 'gold') Object.assign(this.values, VIOLET, { preset: 'violet', showHero: false });
+      this.values.violetDesign = true;
+      this.save();
+    } else if (renamed) this.save();
+    this.values.violetDesign = true;
     for (const slot of ['hero', 'logo']) {
       const blob = store.getBlob(slot);
       if (blob) this.values[slot + 'Image'] = { type: blob.type, v: crypto.createHash('sha1').update(blob.data).digest('hex').slice(0, 10) };
@@ -120,14 +127,10 @@ class Theme {
 }
 
 // Default logo: a dome/arch with a chat bubble, drawn in the theme's colors.
-Theme.DEFAULT_LOGO = '<svg viewBox="0 0 100 110" aria-hidden="true"><defs><linearGradient id="atLogoGrad" x1="0" y1="0" x2="0" y2="1">' +
-  '<stop offset="0" style="stop-color:color-mix(in srgb,var(--primary) 60%,#fff)"/><stop offset=".45" style="stop-color:var(--primary)"/>' +
-  '<stop offset="1" style="stop-color:var(--primary-2)"/></linearGradient></defs>' +
-  '<path fill="url(#atLogoGrad)" d="M50 1c3.2 6.2 6.2 9.4 6.2 13.6a6.2 6.2 0 0 1-12.4 0C43.8 10.4 46.8 7.2 50 1z"/>' +
-  '<g fill="none" stroke="url(#atLogoGrad)" stroke-linecap="round" stroke-linejoin="round">' +
-  '<path stroke-width="8" d="M6 106c5-1 8-4 8-10V64C14 41 29 28 50 21c21 7 36 20 36 43v32c0 6 3 9 8 10"/>' +
-  '<path stroke-width="6" d="M50 42a20 20 0 1 1-10.6 37l-9.4 4 3.4-9A20 20 0 0 1 50 42z"/></g>' +
-  '<g fill="url(#atLogoGrad)"><circle cx="40.5" cy="62" r="3.6"/><circle cx="50" cy="62" r="3.6"/><circle cx="59.5" cy="62" r="3.6"/></g></svg>';
+Theme.DEFAULT_LOGO = '<svg viewBox="0 0 48 48" aria-hidden="true"><defs><linearGradient id="atLogoGrad" x1="0" y1="0" x2="1" y2="1">' +
+  '<stop offset="0" style="stop-color:color-mix(in srgb,var(--primary) 75%,#fff)"/><stop offset="1" style="stop-color:var(--primary-2)"/></linearGradient></defs>' +
+  '<path fill="url(#atLogoGrad)" d="M24 5C13 5 4.5 12.6 4.5 22c0 4.9 2.3 9.3 6 12.4L9 42l8.2-4.1c2.1.7 4.4 1 6.8 1 11 0 19.5-7.6 19.5-17S35 5 24 5z"/>' +
+  '<circle cx="16" cy="22" r="2.6" fill="#fff"/><circle cx="24" cy="22" r="2.6" fill="#fff"/><circle cx="32" cy="22" r="2.6" fill="#fff"/></svg>';
 
 /** The theme's colors as CSS custom properties. */
 Theme.cssVars = t => `:root{--primary:${t.primary};--primary-2:${t.primary2};--bg:${t.bg};--card:${t.card};--text:${t.text};--muted:${t.muted}}`;

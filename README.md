@@ -66,7 +66,7 @@ Everything an admin changes is kept in `store.js`: the word filter, bans, anti-s
 
 ## How users chat
 
-- **Design:** a violet chat app (in `public/chat-ui.css`): an icon rail on the left (sections, sound, dark mode, leave, and your avatar for profile and status), card-style lists with a *Recent chats* strip, a large chat header with an online dot, messages with the sender's avatar and "Name · time" above each bubble, and a rounded message bar. A 🌙 button switches to dark mode (remembered per device). On phones the rail becomes a bottom tab bar, and sound / dark mode / leave move into the avatar menu. The login page still follows **Admin → Appearance**.
+- **Design:** a violet chat app (in `public/chat-ui.css`): an icon rail on the left (sections, sound, dark mode, leave, and your avatar for profile and status), card-style lists with a *Recent chats* strip, a large chat header with an online dot, messages with the sender's avatar and "Name · time" above each bubble, and a rounded message bar. A 🌙 button switches to dark mode (remembered per device). On phones the rail becomes a bottom tab bar, and sound / dark mode / leave move into the avatar menu. The login page uses the same violet look by default (the **Violet** preset in Admin → Appearance), with the same chat-bubble logo and dotted background.
 
 - **1-to-1 mode by default:** after logging in, users aren't in any room. They tap someone in **People** to chat privately, and join group rooms from the **Rooms** tab if they want.
 - **Sidebar tabs:** **People** (quick search plus an **All / ♀ Female / ♂ Male** filter) · **Rooms** · **Inbox** · **History** · **Search** · **Friends**, with unread badges.
@@ -116,7 +116,7 @@ Guests can chat without signing up. On the login screen users can also **Log in*
 
 ## Appearance (Admin → 🎨 Appearance)
 
-The default look is **Dubai Gold**: a cream background with an Arabic geometric pattern, a gold dome logo, a two-tone "Chate**X**" wordmark, a Dubai skyline in the corner of the login card, gold icon badges and a gold gradient button. The chat screens use the same accent color.
+The default look is now **Violet** (matching the chat). The previous default was **Dubai Gold**: a cream background with an Arabic geometric pattern, a gold dome logo, a two-tone "Chate**X**" wordmark, a Dubai skyline in the corner of the login card, gold icon badges and a gold gradient button. The chat screens use the same accent color.
 
 Everything is editable from the admin panel, with a live phone preview:
 - **Color presets:** Dubai Gold, Rose, Emerald Oasis, Royal Blue, Desert Rose. You can also set your own main color, dark shade, page and card backgrounds, and text colors. It warns you if the main color is too light for white button text.
