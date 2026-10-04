@@ -55,6 +55,7 @@ const PUBLIC_DIR = path.join(__dirname, 'public');
 const TYPES = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8',
   '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon',
+  '.webmanifest': 'application/manifest+json; charset=utf-8',
 };
 // Each file gets a content hash. HTML pages reference scripts/styles as /file.js?v=<hash>, so a
 // deploy is picked up immediately while unchanged files stay cached by the browser forever.
@@ -90,7 +91,7 @@ function seoValues(t) {
   const name = t.brandMain + t.brandAccent;
   const title = t.seoTitle || name, desc = t.seoDesc || t.description;
   const base = t.siteUrl;
-  const img = base && t.heroImage ? `${base}/media/hero?v=${t.heroImage.v}` : '';
+  const img = base ? (t.heroImage ? `${base}/media/hero?v=${t.heroImage.v}` : `${base}/icon-512.png`) : ''; // link-preview picture
   const head = [
     `<meta name="description" content="${escHtml(desc)}">`,
     '<meta name="robots" content="index, follow, max-image-preview:large">',
