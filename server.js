@@ -1,6 +1,6 @@
 'use strict';
 /*
- * chatMe entry point: loads the saved admin data (PostgreSQL when DATABASE_URL is set,
+ * ChateX entry point: loads the saved admin data (PostgreSQL when DATABASE_URL is set,
  * otherwise files in data/) and then starts the chat server in app-server.js.
  */
 const store = require('./store.js');

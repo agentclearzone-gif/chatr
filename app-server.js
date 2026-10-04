@@ -1,6 +1,6 @@
 'use strict';
 /*
- * chatMe — in-memory realtime chat server.
+ * ChateX — in-memory realtime chat server.
  *
  * Design goals: 5k–10k concurrent sockets on one Node process, no chat history on disk.
  *  - Plain WebSockets (ws), no per-message compression (saves CPU + ~300KB RAM per socket).
@@ -969,7 +969,7 @@ if (process.env.STATS !== '0') {
   }, 30000).unref();
 }
 
-server.listen(PORT, () => console.log(`chatMe listening on http://localhost:${PORT}  (admin: http://localhost:${PORT}/admin)`));
+server.listen(PORT, () => console.log(`ChateX listening on http://localhost:${PORT}  (admin: http://localhost:${PORT}/admin)`));
 
 function shutdown() {
   if (filter.dirty) filter.save();

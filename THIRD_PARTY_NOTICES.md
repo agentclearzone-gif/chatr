@@ -1,6 +1,6 @@
 # Third-party notices
 
-chatMe uses the following third-party software and data.
+ChateX uses the following third-party software and data.
 
 | Component | Used for | License |
 |---|---|---|

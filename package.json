@@ -1,7 +1,7 @@
 {
-  "name": "chatme",
+  "name": "chatex",
   "version": "1.0.0",
-  "description": "chatMe: ultra-fast in-memory chatroom",
+  "description": "ChateX: ultra-fast in-memory chatroom",
   "main": "server.js",
   "scripts": {
     "start": "node --env-file-if-exists=.env server.js",
