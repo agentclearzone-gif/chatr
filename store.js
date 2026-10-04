@@ -114,10 +114,12 @@ class PgStore {
   async init() {
     const { Pool } = require('pg');
     // SSL: the URL's own sslmode wins; hosts without a dot (localhost, Render's internal "dpg-…" names)
-    // are on a private network; anything else on the internet gets verified TLS.
+    // and Railway's private "*.railway.internal" are on a private network; anything else on the internet
+    // gets verified TLS, except Railway's public proxy (*.rlwy.net), whose certificate is self-signed.
     let host = '';
     try { host = new URL(this.url).hostname; } catch {}
-    const ssl = /[?&]sslmode=/.test(this.url) || !host.includes('.') || host === '127.0.0.1' ? undefined : { rejectUnauthorized: true };
+    const ssl = /[?&]sslmode=/.test(this.url) || !host.includes('.') || host === '127.0.0.1' || host.endsWith('.internal') ? undefined
+      : host.endsWith('.rlwy.net') ? { rejectUnauthorized: false } : { rejectUnauthorized: true };
     // Short idle timeout: connections close when unused, so serverless databases can go to sleep.
     this.pool = new Pool({ connectionString: this.url, max: 3, idleTimeoutMillis: 5000, connectionTimeoutMillis: 20000, allowExitOnIdle: true, ...(ssl ? { ssl } : {}) });
     this.pool.on('error', e => { this.lastError = e.message; console.warn('[store] database connection error:', e.message); });
