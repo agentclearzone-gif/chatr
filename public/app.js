@@ -1178,19 +1178,27 @@
     const q = $('sName').value.trim().toLowerCase();
     const g = (document.querySelector('input[name=sg]:checked') || {}).value || 'all';
     const cc = $('sCountry').value;
+    const lo = +$('sAgeMin').value, hi = +$('sAgeMax').value, anyAge = lo === AGE_MIN && hi === AGE_MAX;
     const found = [...S.users.values()]
-      .filter(u => !u.ghost && (!q || u.name.toLowerCase().includes(q)) && (g === 'all' || u.g === g) && (!cc || u.cc === cc))
+      .filter(u => !u.ghost && (!q || u.name.toLowerCase().includes(q)) && (g === 'all' || u.g === g) && (!cc || u.cc === cc) && u.age >= lo && u.age <= hi)
       .sort((a, b) => (b.name.toLowerCase().startsWith(q) - a.name.toLowerCase().startsWith(q)) || b.seq - a.seq)
       .slice(0, 300);
     const one = found.length === 1;
     const noun = g === 'f' ? (one ? 'woman' : 'women') : g === 'm' ? (one ? 'man' : 'men') : (one ? 'person' : 'people');
-    const what = [noun, cc ? `from ${countryName(cc)}` : '', q ? `matching “${$('sName').value.trim()}”` : ''].filter(Boolean).join(' ');
+    const what = [noun, anyAge ? '' : hi === AGE_MAX ? `aged ${lo}+` : `aged ${lo}–${hi}`, cc ? `from ${countryName(cc)}` : '', q ? `matching “${$('sName').value.trim()}”` : ''].filter(Boolean).join(' ');
     $('sHead').hidden = false;
-    $('sHead').textContent = found.length ? `${found.length}${found.length === 300 ? '+' : ''} ${what} online` : 'No matches online right now. Try another name, gender or country.';
+    $('sHead').textContent = found.length ? `${found.length}${found.length === 300 ? '+' : ''} ${what} online` : 'No matches online right now. Try another name, gender, age or country.';
     $('sResults').innerHTML = found.map(u => `<div class="crow ${u.g}" data-uid="${u.id}">${avatar(u)}
       <div class="info"><div class="nm">${esc(u.name)}${vb(u)}</div><div class="pv">${esc(subLine(u))}</div></div>${flagImg(u)}</div>`).join('');
   }
   $('searchForm').addEventListener('submit', e => { e.preventDefault(); runSearch(); });
+  // age range: 18 to 99+ (the ages people can sign up with); the two boxes never cross
+  const AGE_MIN = 18, AGE_MAX = 99;
+  const ageOpts = sel => { let h = ''; for (let a = AGE_MIN; a <= AGE_MAX; a++) h += `<option value="${a}"${a === sel ? ' selected' : ''}>${a === AGE_MAX ? '99+' : a}</option>`; return h; };
+  $('sAgeMin').innerHTML = ageOpts(AGE_MIN);
+  $('sAgeMax').innerHTML = ageOpts(AGE_MAX);
+  $('sAgeMin').addEventListener('change', () => { if (+$('sAgeMin').value > +$('sAgeMax').value) $('sAgeMax').value = $('sAgeMin').value; });
+  $('sAgeMax').addEventListener('change', () => { if (+$('sAgeMax').value < +$('sAgeMin').value) $('sAgeMin').value = $('sAgeMax').value; });
   $('sResults').addEventListener('click', e => { const r = e.target.closest('[data-uid]'); if (r) openChat(+r.dataset.uid); });
 
   // ---------------- friends (registered profiles) ----------------
